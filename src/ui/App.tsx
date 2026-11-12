@@ -13,6 +13,7 @@ export function App() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [tentativa, setTentativa] = useState(0);
+  const [aviso, setAviso] = useState(linkInicial.erro);
   const [pendente, setPendente] = useState<TipoLink | null>(() => { if (linkInicial.tipo) marcarSenhaPendente(linkInicial.tipo); return senhaPendente(); });
   useEffect(() => {
     let ativo = true;
@@ -23,6 +24,7 @@ export function App() {
       eventoRecebido = true;
       if (evento === 'PASSWORD_RECOVERY' && !senhaPendente()) marcarSenhaPendente('recovery');
       if (!atual) marcarSenhaPendente(null);
+      if (ativo && atual) setAviso(null);
       if (ativo) { setSessao(atual); setPendente(senhaPendente()); setCarregando(false); setErro(''); }
     });
     if (saidaPendente()) {
@@ -39,7 +41,7 @@ export function App() {
   }, [tentativa]);
   if (erro) return <ErroPedido erro={erro} repetir={() => setTentativa(t => t + 1)} />;
   if (carregando) return <p className="loading" role="status">A verificar a sessão…</p>;
-  if (!sessao) return <Login aviso={linkInicial.erro} />;
+  if (!sessao) return <Login aviso={aviso} />;
   if (pendente) return <DefinirSenha convite={pendente === 'invite'} email={sessao.user.email} aoConcluir={() => { marcarSenhaPendente(null); setPendente(null); }} />;
   return <Mesa key={sessao.user.id} />;
 }

@@ -15,13 +15,14 @@ export function lerLinkAuth(hash: string): LinkAuth {
 }
 
 const CHAVE = 'mesa-consultor-definir-senha';
-// Guarda na aba que a sessão veio de um link e ainda falta definir a palavra-passe,
-// para um recarregar da página não saltar o ecrã.
+// Marca que a sessão veio de um link e ainda falta definir a palavra-passe. Fica em localStorage,
+// tal como a sessão do supabase-js, para nova aba ou reinício do browser não saltarem o ecrã;
+// é limpa quando a sessão termina e antes de um login com palavra-passe.
 export function senhaPendente(): TipoLink | null {
-  try { const v = sessionStorage.getItem(CHAVE); return v === 'invite' || v === 'recovery' ? v : null; } catch { return null; }
+  try { const v = localStorage.getItem(CHAVE); return v === 'invite' || v === 'recovery' ? v : null; } catch { return null; }
 }
 export function marcarSenhaPendente(tipo: TipoLink | null): void {
-  try { if (tipo) sessionStorage.setItem(CHAVE, tipo); else sessionStorage.removeItem(CHAVE); } catch { /* sem storage: vale só o estado em memória */ }
+  try { if (tipo) localStorage.setItem(CHAVE, tipo); else localStorage.removeItem(CHAVE); } catch { /* sem storage: vale só o estado em memória */ }
 }
 
 interface ErroComCodigo { code?: string; message?: string }

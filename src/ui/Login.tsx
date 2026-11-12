@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { supabase } from '../dados/cliente';
-import { erroAuth } from '../dados/linkAuth';
+import { erroAuth, marcarSenhaPendente } from '../dados/linkAuth';
 import { mensagemErro } from './auxiliares';
 
-const ENVIADO = 'Se o e-mail estiver registado, enviámos um link para definir a palavra-passe. Verifique a caixa de entrada e o spam.';
+const ENVIADO = 'Se o e-mail estiver registado, enviámos um link para definir a palavra-passe. Verifique a caixa de entrada e o spam; se não chegar em alguns minutos, tente novamente dentro de uma hora.';
 
 export function Login({ aviso }: { aviso?: string | null }) {
   const [modo, setModo] = useState<'entrar' | 'recuperar'>(aviso ? 'recuperar' : 'entrar');
@@ -16,6 +16,7 @@ export function Login({ aviso }: { aviso?: string | null }) {
     e?.preventDefault(); if (ocupado) return;
     if (!email.trim() || !senha) { setErro('Indique o e-mail e a palavra-passe.'); return; }
     setOcupado(true); setErro('');
+    marcarSenhaPendente(null); // quem entra com palavra-passe já a tem; uma marca antiga não pode pedir outra
     try { const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha }); if (error) throw error; }
     catch (e) { setErro(erroAuth(e) ?? mensagemErro(e)); } finally { setOcupado(false); }
   }
@@ -25,7 +26,8 @@ export function Login({ aviso }: { aviso?: string | null }) {
     setOcupado(true); setErro('');
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/` });
-      if (error) throw error;
+      // O limite de envio também responde a contas existentes: tratá-lo como sucesso não revela se o e-mail existe.
+      if (error && error.code !== 'over_email_send_rate_limit') throw error;
       setEnviado(true);
     } catch (e) { setErro(erroAuth(e) ?? mensagemErro(e)); } finally { setOcupado(false); }
   }

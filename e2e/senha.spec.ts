@@ -1,12 +1,17 @@
 import { execSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
+import { loadEnv } from 'vite';
+import config from '../playwright.config';
 
 // Convite e recuperação contra o Supabase LOCAL: e-mails vão para o Mailpit (54324), nunca para fora.
 const env = Object.fromEntries(execSync('supabase status -o env', { encoding: 'utf8' }).split('\n')
   .map(l => l.match(/^([A-Z_]+)="?(.*?)"?$/)).filter((m): m is RegExpMatchArray => !!m).map(m => [m[1], m[2]]));
 const API = env.API_URL; const MAILPIT = env.MAILPIT_URL ?? env.INBUCKET_URL;
-if (!API?.startsWith('http://127.0.0.1') || !MAILPIT?.startsWith('http://127.0.0.1')) throw new Error('e2e de senha só corre contra o Supabase local');
+// Guarda: Supabase do teste, Supabase que a app de dev usa e a própria app têm de ser locais.
+const local = (u?: string) => { try { return ['127.0.0.1', 'localhost'].includes(new URL(u ?? '').hostname); } catch { return false; } };
+const appSupabase = loadEnv('development', process.cwd(), 'VITE_').VITE_SUPABASE_URL;
+if (![API, MAILPIT, appSupabase, config.use?.baseURL].every(local)) throw new Error('e2e de senha só corre contra Supabase e app locais');
 const admin = createClient(API, env.SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
 async function linkDoEmail(email: string, tipo: 'invite' | 'recovery', ja: number): Promise<string> {
