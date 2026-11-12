@@ -8,7 +8,7 @@ export function PainelContacto({ linha, compradorId, fechar, aoContacto }: { lin
   const i = linha.imovel;
   const [canal, setCanal] = useState<Canal>(canalPadrao(i) ?? 'whatsapp');
   const [texto, setTexto] = useState(() => mensagemParaConsultor(i,linha.aConfirmar));
-  const [ultimoId, setUltimoId] = useState<string | null>(null);
+  const [ultimoId, setUltimoId] = useState<string | null>(linha.contacto?.id ?? null);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
   const [feedback, setFeedback] = useState('');
