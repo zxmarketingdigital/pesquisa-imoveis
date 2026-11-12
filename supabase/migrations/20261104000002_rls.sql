@@ -38,18 +38,36 @@ create policy fotos_ver_proprias on storage.objects for select to authenticated
 -- Sem policy de DELETE: nenhum consultor apaga fotos, nem as suas. Assim uma foto em uso por um imóvel
 -- partilhado nunca some. Uploads órfãos limpam-se com a service role (fora da V1).
 
--- Nem a service role nem o dono do banco apagam uma foto em uso. O trigger corre depois de obter o lock da
--- linha e a consulta dentro da função usa snapshot nova: se a RPC registar_anuncio (que segura a foto com
--- FOR SHARE) confirmar primeiro, o delete vê o imóvel e falha. Limpeza de órfãos fica protegida por aqui.
+-- Nem a service role nem o dono do banco tiram do ar uma foto em uso: apagar, renomear, mudar de bucket,
+-- arquivar (archived_at) ou marcar como delete marker são recusados. O trigger corre depois de obter o
+-- lock da linha e a consulta dentro da função usa snapshot nova: se a RPC registar_anuncio (que segura a
+-- foto com FOR SHARE) confirmar primeiro, a operação vê o imóvel e falha. O bucket não é versionado, por
+-- isso o índice único idx_objects_null_version do storage impede segunda linha com o mesmo nome.
 create or replace function public.proteger_foto_em_uso() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  if old.bucket_id = 'fotos' and exists (select 1 from public.imoveis i where i.foto_caminho = old.name) then
+  if tg_op = 'TRUNCATE' then
+    if exists (select 1 from public.imoveis where foto_caminho is not null) then
+      raise exception 'foto em uso por um imóvel' using errcode = '23503';
+    end if;
+    return null;
+  end if;
+  if old.bucket_id <> 'fotos' then
+    return coalesce(new, old);
+  end if;
+  if tg_op = 'UPDATE' and new.bucket_id = old.bucket_id and new.name = old.name
+     and (to_jsonb(new)->>'archived_at') is null
+     and coalesce((to_jsonb(new)->>'is_delete_marker')::boolean, false) = false then
+    return new;
+  end if;
+  if exists (select 1 from public.imoveis i where i.foto_caminho = old.name) then
     raise exception 'foto em uso por um imóvel' using errcode = '23503';
   end if;
-  return old;
+  return coalesce(new, old);
 end $$;
 revoke all on function public.proteger_foto_em_uso() from public, anon, authenticated;
 
-create trigger fotos_proteger_em_uso before delete on storage.objects
+create trigger fotos_proteger_em_uso before update or delete on storage.objects
   for each row execute function public.proteger_foto_em_uso();
+create trigger fotos_proteger_truncate before truncate on storage.objects
+  for each statement execute function public.proteger_foto_em_uso();

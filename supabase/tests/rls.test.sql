@@ -1,5 +1,5 @@
 begin;
-select plan(41);
+select plan(45);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'rls-a@teste.local'),
@@ -69,6 +69,10 @@ select throws_ok($$ select * from public.registar_anuncio('https://www.imovirtua
 reset role;
 set local storage.allow_delete_query = 'true';
 select throws_ok($$ delete from storage.objects where name = '22222222-2222-2222-2222-222222222222.jpg' $$, '23503', 'foto em uso por um imóvel', 'delete direto de foto em uso falha pelo trigger');
+select throws_ok($$ update storage.objects set name = '99999999-9999-9999-9999-999999999999.jpg' where name = '22222222-2222-2222-2222-222222222222.jpg' $$, '23503', 'foto em uso por um imóvel', 'renomear foto em uso falha');
+select throws_ok($$ update storage.objects set archived_at = now() where name = '22222222-2222-2222-2222-222222222222.jpg' $$, '23503', 'foto em uso por um imóvel', 'arquivar foto em uso falha');
+select throws_ok($$ truncate storage.objects cascade $$, '23503', 'foto em uso por um imóvel', 'truncate com foto em uso falha');
+select lives_ok($$ update storage.objects set metadata = '{"x":1}' where name = '22222222-2222-2222-2222-222222222222.jpg' $$, 'atualizar metadados de foto em uso passa');
 with d as (delete from storage.objects where name = '44444444-4444-4444-4444-444444444444.jpg' returning 1) select is((select count(*) from d), 1::bigint, 'dono do banco apaga foto livre');
 
 -- anónimo
