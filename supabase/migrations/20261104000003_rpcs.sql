@@ -67,9 +67,9 @@ begin
     -- como o telefone, desde que não colida com outro imóvel; a imobiliária é obrigatória e nunca muda.
     select i.tipologia, i.concelho, i.zona, i.concelho_norm, i.zona_norm into v_ex
     from public.imoveis i where i.id = v_imovel;
-    if v_ex.tipologia <> p_tipologia
-       or v_ex.concelho_norm <> public.normalizar_nome(p_concelho)
-       or v_ex.zona_norm <> public.normalizar_nome(p_zona) then
+    if v_ex.tipologia is distinct from p_tipologia
+       or v_ex.concelho_norm is distinct from public.normalizar_nome(p_concelho)
+       or v_ex.zona_norm is distinct from public.normalizar_nome(p_zona) then
       raise exception 'Este anúncio já está registado como % em % / %.', v_ex.tipologia, v_ex.concelho, v_ex.zona
         using errcode = '22023';
     end if;
