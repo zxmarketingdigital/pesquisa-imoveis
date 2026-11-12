@@ -2,7 +2,7 @@ export type Portal = 'Imovirtual' | 'Casa Sapo' | 'CasaYes' | 'Outro';
 export type Canal = 'whatsapp' | 'email';
 export type CampoEmFalta = 'ano' | 'garagem';
 
-export interface Anuncio { portal: Portal; url: string }
+export interface Anuncio { portal: Portal; url: string; preco?: number }
 
 export interface Imovel {
   id: string;

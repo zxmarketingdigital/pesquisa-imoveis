@@ -26,6 +26,13 @@ describe('mensagemParaConsultor', () => {
   it('sem portal conhecido diz online', () => {
     expect(mensagemParaConsultor({ ...imovel, anuncios: [] }, [])).toContain('anunciado online por');
   });
+  it('cita o portal do anúncio com o preço mínimo', () => {
+    const anuncios = [
+      { portal: 'Imovirtual' as const, url: 'https://a.pt/1', preco: 300000 },
+      { portal: 'CasaYes' as const, url: 'https://b.pt/2', preco: 280000 },
+    ];
+    expect(mensagemParaConsultor({ ...imovel, preco: 280000, anuncios }, [])).toContain('anunciado na CasaYes por 280.000 €');
+  });
 });
 
 it('formata preço', () => {

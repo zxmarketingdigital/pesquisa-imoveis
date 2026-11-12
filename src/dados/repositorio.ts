@@ -9,13 +9,15 @@ async function todasAsPaginas<T>(
   contexto: string,
   pedido: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
 ): Promise<T[]> {
+  // Só pára numa página vazia: se o projeto limitar `max_rows` abaixo de PAGINA, uma página curta não é o fim.
   const todos: T[] = [];
-  for (let de = 0; ; de += PAGINA) {
+  for (let de = 0; ; ) {
     const { data, error } = await pedido(de, de + PAGINA - 1);
     erro(contexto, error);
     const pagina = data ?? [];
+    if (pagina.length === 0) return todos;
     todos.push(...pagina);
-    if (pagina.length < PAGINA) return todos;
+    de += pagina.length;
   }
 }
 
@@ -36,7 +38,7 @@ const paraImovel = (i: any): Imovel => ({
   anoConstrucao: i.ano_construcao, construcaoNova: i.construcao_nova, garagem: i.garagem,
   consultorNome: i.consultor_nome, telefone: i.telefone, email: i.email, fotoUrl: urlDaFoto(i.foto_caminho),
   primeiraVez: i.primeira_vez,
-  anuncios: (i.anuncios ?? []).map((a: any): Anuncio => ({ portal: a.portal, url: a.url })),
+  anuncios: (i.anuncios ?? []).map((a: any): Anuncio => ({ portal: a.portal, url: a.url, preco: a.preco === undefined ? undefined : Number(a.preco) })),
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -68,7 +70,7 @@ export async function criarComprador(n: NovoComprador): Promise<string> {
 
 export async function imoveisCandidatos(p: Pesquisa): Promise<Imovel[]> {
   const linhas = await todasAsPaginas('Ler imóveis', (de, ate) => supabase
-    .from('imoveis').select('*, anuncios(portal, url, primeira_vez)')
+    .from('imoveis').select('*, anuncios(portal, url, preco, primeira_vez)')
     .eq('tipologia', p.tipologia).lte('preco', p.precoMax)
     .order('primeira_vez', { ascending: false }).order('id')
     .order('primeira_vez', { referencedTable: 'anuncios' }).range(de, ate));
