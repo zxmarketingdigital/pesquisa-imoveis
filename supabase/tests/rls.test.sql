@@ -1,5 +1,5 @@
 begin;
-select plan(36);
+select plan(37);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'rls-a@teste.local'),
@@ -58,6 +58,11 @@ with d as (delete from storage.objects where name = '55555555-5555-5555-5555-555
 -- A não regista imóvel com a foto de B
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}';
 select throws_ok($$ select * from public.registar_anuncio('https://www.imovirtual.com/foto-alheia','RG','Norte','T2',300000,80,'Lisboa','Lumiar',2024,false,true,null,null,null,'22222222-2222-2222-2222-222222222222.jpg') $$, '22023', 'foto inválida', 'A não usa a foto de B');
+
+-- FK: nem o dono do banco apaga um objeto que um imóvel usa (fecha a corrida com a RPC)
+reset role;
+set local storage.allow_delete_query = 'true';
+select throws_ok($$ delete from storage.objects where name = '22222222-2222-2222-2222-222222222222.jpg' $$, '23503', null, 'delete direto de foto em uso falha por FK');
 
 -- anónimo
 reset role;
