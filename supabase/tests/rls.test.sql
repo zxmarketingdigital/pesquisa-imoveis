@@ -1,5 +1,5 @@
 begin;
-select plan(45);
+select plan(46);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'rls-a@teste.local'),
@@ -59,6 +59,8 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","r
 insert into storage.objects (bucket_id, name, owner_id) values ('fotos', '55555555-5555-5555-5555-555555555555.jpg', '00000000-0000-0000-0000-00000000000a');
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated"}';
 with d as (delete from storage.objects where name = '55555555-5555-5555-5555-555555555555.jpg' returning 1) select is((select count(*) from d), 0::bigint, 'B não apaga foto de A');
+
+select throws_ok($$ insert into storage.objects (bucket_id, name, owner_id) values ('fotos', '66666666-6666-6666-6666-666666666666.jpg', '00000000-0000-0000-0000-00000000000a') $$, '42501', null, 'B não envia foto em nome de A');
 
 -- A não regista imóvel com a foto de B
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}';

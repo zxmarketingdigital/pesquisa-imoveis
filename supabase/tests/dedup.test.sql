@@ -9,8 +9,12 @@ insert into storage.objects (bucket_id, name, owner_id) values
   ('fotos', '11111111-1111-1111-1111-111111111111.jpg', '00000000-0000-0000-0000-0000000000d1'),
   ('fotos', '11111111-1111-1111-1111-1111111111aa.jpg', '00000000-0000-0000-0000-0000000000d1'),
   ('fotos', '22222222-2222-2222-2222-2222222222bb.jpg', '00000000-0000-0000-0000-0000000000d1'),
-  ('fotos', '33333333-3333-3333-3333-3333333333cc.jpg', '00000000-0000-0000-0000-0000000000d1'),
+  ('fotos', '33333333-3333-3333-3333-3333333333cc.jpg', '00000000-0000-0000-0000-0000000000d1');
+-- cada consultor só envia fotos em seu nome: a foto de d2 entra com a sessão de d2
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000d2","role":"authenticated"}';
+insert into storage.objects (bucket_id, name, owner_id) values
   ('fotos', '99999999-9999-9999-9999-999999999999.jpg', '00000000-0000-0000-0000-0000000000d2');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000d1","role":"authenticated"}';
 
 create function pg_temp.reg(url text, ref text, imob text, preco numeric default 390000,
   tip text default 'T2', concelho text default 'Lisboa', telefone text default '+351900000001', foto text default null, zona text default 'Lumiar',
