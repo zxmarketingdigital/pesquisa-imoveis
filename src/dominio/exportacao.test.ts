@@ -1,0 +1,50 @@
+import { describe, expect, it } from 'vitest';
+import ExcelJS from 'exceljs';
+import { CABECALHOS, gerarCSV, gerarXLSX, type LinhaExportacao } from './exportacao';
+
+const linha: LinhaExportacao = {
+  comprador: 'Ana R.', referencia: 'R1', portais: 'Imovirtual, Casa Sapo', tipologia: 'T2', preco: 395000, areaM2: 84,
+  concelho: 'Lisboa', zona: 'Lumiar', ano: '2024', garagem: 'Sim', consultor: 'Marta "M" Exemplo', imobiliaria: 'Norte',
+  telefone: '+351 900 000 001', email: 'm@exemplo.pt', estado: 'Por contactar',
+  fotoUrl: 'https://f.exemplo/1.jpg', links: 'https://a.pt/1 | https://b.pt/2',
+};
+
+describe('gerarCSV', () => {
+  const linhas = gerarCSV([linha]).replace('﻿', '').split('\r\n');
+  it('começa com BOM e usa ponto e vírgula', () => {
+    expect(gerarCSV([linha]).startsWith('﻿')).toBe(true);
+    expect(linhas[0]).toBe(CABECALHOS.map((c) => `"${c}"`).join(';'));
+  });
+  it('escapa aspas e mantém telefone válido', () => {
+    expect(linhas[1]).toContain('"Marta ""M"" Exemplo"');
+    expect(linhas[1]).toContain('"+351 900 000 001"');
+  });
+  it('neutraliza fórmula em qualquer campo de texto', () => {
+    const csv = gerarCSV([{ ...linha, consultor: '=HYPERLINK("x")', telefone: '+SOMA(1)' }]);
+    expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
+    expect(csv).toContain(`"'+SOMA(1)"`);
+  });
+});
+
+describe('gerarXLSX', () => {
+  const JPEG = Uint8Array.from(atob('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAA//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AN//Z'), (c) => c.charCodeAt(0)).buffer;
+
+  it('embute a foto e escreve texto como texto', async () => {
+    const { dados, semFoto } = await gerarXLSX([{ ...linha, consultor: '=1+1' }], async () => JPEG);
+    expect(semFoto).toBe(0);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(dados);
+    const folha = wb.worksheets[0]!;
+    expect(folha.getImages()).toHaveLength(1);
+    expect(folha.getRow(1).getCell(1).value).toBe('Foto');
+    expect(folha.getRow(2).getCell(12).value).toBe('=1+1');
+  });
+
+  it('conta foto que falhou e continua', async () => {
+    const { dados, semFoto } = await gerarXLSX([linha], async () => { throw new Error('falhou'); });
+    expect(semFoto).toBe(1);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(dados);
+    expect(wb.worksheets[0]!.getImages()).toHaveLength(0);
+  });
+});
