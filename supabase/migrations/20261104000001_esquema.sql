@@ -105,14 +105,9 @@ create table public.imoveis (
   primeira_vez timestamptz not null default now(),
   ultima_vez timestamptz not null default now()
 );
--- Foto em uso nunca fica sem objeto: FK composta para storage.objects. A verificação de integridade usa
--- snapshot atual, por isso fecha a corrida com o delete (a policy de delete avalia com a snapshot do
--- início do statement e não a fecharia sozinha).
-alter table public.imoveis
-  add column foto_bucket text generated always as (case when foto_caminho is null then null else 'fotos' end) stored;
-alter table public.imoveis
-  add constraint imoveis_foto_objeto_fk foreign key (foto_bucket, foto_caminho)
-  references storage.objects (bucket_id, name) on delete no action;
+-- Foto em uso nunca fica sem objeto: trigger em storage.objects recusa apagar foto referenciada (ver 002_rls).
+-- Não há FK para storage.objects: no Supabase hospedado o storage tem versionamento e já não existe
+-- índice único em (bucket_id, name).
 
 -- Só liga por referência quando imobiliária, tipologia, concelho e zona coincidem (referências repetem-se entre imóveis diferentes).
 create unique index imoveis_referencia_unica on public.imoveis (referencia_norm, imobiliaria_norm, tipologia, concelho_norm, zona_norm) where referencia_norm <> '';
