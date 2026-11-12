@@ -36,10 +36,17 @@ export function interpretarUrlAnuncio(texto: string): AnuncioInterpretado | null
     if (/^(javascript|data|vbscript|file|mailto):/i.test(bruto)) return null;
     bruto = `https://${bruto}`; // aceita URL colado sem protocolo (o servidor faz o mesmo)
   }
+  // "\\" em qualquer parte e "@"/%40/%5c na autoridade desviam o host (o parser WHATWG trata "\\" como
+  // fim da autoridade). O servidor recusa o mesmo.
+  if (bruto.includes('\\')) return null;
+  const autoridade = bruto.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '').split(/[/?#]/)[0]!;
+  if (/[@\\]|%40|%5c/i.test(autoridade)) return null;
   let u: URL;
   try { u = new URL(bruto); } catch { return null; }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
   const chave = normalizarChave(bruto);
+  // o host que o navegador vai abrir tem de ser o da chave
+  if (u.hostname.toLowerCase().replace(/^(www|m)\./, '') !== chave.split(/[/?]/)[0]) return null;
   const host = chave.split(/[/?]/)[0]!;
   const portal = PORTAIS.find(([d]) => host === d || host.endsWith(`.${d}`))?.[1] ?? 'Outro';
   u.hash = '';

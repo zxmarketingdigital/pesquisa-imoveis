@@ -16,6 +16,19 @@ describe('interpretarUrlAnuncio', () => {
   it('remove tracking e ordena os restantes parâmetros, também em portal desconhecido', () => {
     expect(interpretarUrlAnuncio('https://exemplo.pt/p/?utm_medium=a&b=2&a=1&gclid=z')?.chave).toBe('exemplo.pt/p?a=1&b=2');
   });
+  it.each([
+    'https://evil.example\\@imovirtual.com/anuncio/123',
+    'https://evil.example%5C@imovirtual.com/anuncio/123',
+    'https://evil.example%5c@imovirtual.com/anuncio/123',
+    'https://user:pass@imovirtual.com/anuncio/123',
+    'https://imovirtual.com%40evil.example/anuncio/123',
+    'https://imovirtual.com/anuncio\\123',
+  ])('recusa URL com autoridade manipulada: %s', (url) => {
+    expect(interpretarUrlAnuncio(url)).toBeNull();
+  });
+  it('aceita @ fora da autoridade', () => {
+    expect(interpretarUrlAnuncio('https://imovirtual.com/anuncio/1?contacto=a@b.pt')).toMatchObject({ portal: 'Imovirtual' });
+  });
   it('reconhece Casa Sapo e CasaYes', () => {
     expect(interpretarUrlAnuncio('https://casa.sapo.pt/x/')?.portal).toBe('Casa Sapo');
     expect(interpretarUrlAnuncio('https://casayes.pt/x')?.portal).toBe('CasaYes');
