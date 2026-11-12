@@ -31,6 +31,15 @@ describe('gerarCSV: neutralização', () => {
   it.each(['-1+2', '@SOMA(1)', '\tcmd', '\rcmd', '=1+1', '+1+1'])('prefixa %j em campo de texto', (valor) => {
     expect(corpo({ consultor: valor })).toContain(`"'${valor.replace(/"/g, '""')}"`);
   });
+  it('prefixa também quando o 1.º caractere não-espaço é perigoso', () => {
+    expect(corpo({ consultor: ' =HYPERLINK("x")' })).toContain(`"' =HYPERLINK(""x"")"`);
+  });
+  it('decimais saem com vírgula e sem separador de milhares', () => {
+    const l = corpo({ areaM2: 85.5, preco: 1234567.5 });
+    expect(l).toContain('"85,5"');
+    expect(l).toContain('"1234567,5"');
+    expect(corpo({ areaM2: 84 })).toContain('"84"');
+  });
   it('quebra de linha dentro do campo fica entre aspas', () => {
     expect(corpo({ consultor: 'a\nb' })).toContain('"a\nb"');
   });

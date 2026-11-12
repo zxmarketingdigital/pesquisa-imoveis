@@ -14,11 +14,12 @@ const valores = (l: LinhaExportacao): Array<string | number> => [
 const INDICE_TELEFONE = CABECALHOS.indexOf('Telefone');
 
 function celulaCSV(valor: string | number, indice = -1): string {
-  let s = String(valor);
-  // Perigosos (= + - @ tab CR) levam o prefixo '. Na coluna Telefone leva-o também quem é só dígitos/espaços
+  // CSV pt-PT (separador ';'): decimais com vírgula e sem separador de milhares; o XLSX continua numérico.
+  let s = typeof valor === 'number' ? String(valor).replace('.', ',') : String(valor);
+  // Perigosos (= + - @ tab CR, mesmo depois de espaços) levam o prefixo '. Na coluna Telefone leva-o também quem é só dígitos/espaços
   // ou começa por + ou 00: o Excel lê "+351 ..." como fórmula e come os zeros de "00351...".
   const telefoneComoTexto = indice === INDICE_TELEFONE && /^[+\d][\d\s()-]*$/.test(s);
-  if (typeof valor === 'string' && (telefoneComoTexto || /^[=+\-@\t\r]/.test(s))) s = `'${s}`;
+  if (typeof valor === 'string' && (telefoneComoTexto || /^\s*[=+\-@\t\r]/.test(s))) s = `'${s}`;
   return `"${s.replace(/"/g, '""')}"`;
 }
 

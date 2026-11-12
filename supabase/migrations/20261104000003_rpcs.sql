@@ -35,7 +35,20 @@ begin
     raise exception 'URL de anúncio inválido' using errcode = '22023';
   end if;
   v_chave := public.normalizar_url(v_url);
+  if v_chave is null or v_chave = '' then
+    raise exception 'URL de anúncio inválido' using errcode = '22023';
+  end if;
   v_portal := public.portal_da_chave(v_chave);
+  -- A foto tem de existir no bucket e ser do próprio consultor. FOR SHARE segura o objeto até ao commit:
+  -- o delete concorrente (policy fotos_apagar_proprias, que não vê este registo ainda por confirmar)
+  -- espera, e se o delete já confirmou antes, aqui não há linha e a RPC falha.
+  if v_foto is not null then
+    perform 1 from storage.objects o
+    where o.bucket_id = 'fotos' and o.name = v_foto and o.owner_id = auth.uid()::text for share;
+    if not found then
+      raise exception 'foto inválida' using errcode = '22023';
+    end if;
+  end if;
   -- serializa registos do mesmo anúncio (evita imóvel órfão em corrida)
   perform pg_advisory_xact_lock(hashtextextended(v_portal || '|' || v_chave, 0));
 

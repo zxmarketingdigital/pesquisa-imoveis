@@ -1,9 +1,16 @@
 begin;
-select plan(40);
+select plan(42);
 
 insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000d1', 'dedup@teste.local');
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000d1","role":"authenticated"}';
+
+insert into storage.objects (bucket_id, name, owner_id) values
+  ('fotos', '11111111-1111-1111-1111-111111111111.jpg', '00000000-0000-0000-0000-0000000000d1'),
+  ('fotos', '11111111-1111-1111-1111-1111111111aa.jpg', '00000000-0000-0000-0000-0000000000d1'),
+  ('fotos', '22222222-2222-2222-2222-2222222222bb.jpg', '00000000-0000-0000-0000-0000000000d1'),
+  ('fotos', '33333333-3333-3333-3333-3333333333cc.jpg', '00000000-0000-0000-0000-0000000000d1'),
+  ('fotos', '99999999-9999-9999-9999-999999999999.jpg', '00000000-0000-0000-0000-0000000000d2');
 
 create function pg_temp.reg(url text, ref text, imob text, preco numeric default 390000,
   tip text default 'T2', concelho text default 'Lisboa', telefone text default '+351900000001', foto text default null, zona text default 'Lumiar',
@@ -49,7 +56,9 @@ select is((select count(*) from public.imoveis where referencia is not null and 
 select is((select estado from pg_temp.reg('https://casayes.pt/f1', 'FOTO-1', 'Imobiliária Foto', 300000, 'T2', 'Lisboa', '+351911111111', '11111111-1111-1111-1111-111111111111.jpg')), 'novo', 'imóvel com contacto e foto');
 select is((select estado from pg_temp.reg('https://casayes.pt/f1', 'FOTO-1', 'Imobiliária Foto', 300000, 'T2', 'Lisboa', null, null)), 'atualizado', 'reenvio sem contacto nem foto');
 select is((select telefone || '|' || foto_caminho from public.imoveis where referencia = 'FOTO-1'), '+351911111111|11111111-1111-1111-1111-111111111111.jpg', 'nulo não apaga contacto nem foto');
-select throws_ok($$ select * from pg_temp.reg('https://casayes.pt/f2', 'FOTO-2', 'Imob', 300000, 'T2', 'Lisboa', null, 'https://evil.example/x.jpg') $$, '23514', null, 'foto fora do bucket é recusada');
+select throws_ok($$ select * from pg_temp.reg('https://casayes.pt/f2', 'FOTO-2', 'Imob', 300000, 'T2', 'Lisboa', null, 'https://evil.example/x.jpg') $$, '22023', null, 'foto fora do bucket é recusada');
+select throws_ok($$ select * from pg_temp.reg('https://casayes.pt/f3', 'FOTO-3', 'Imob', 300000, 'T2', 'Lisboa', null, '88888888-8888-8888-8888-888888888888.jpg') $$, '22023', 'foto inválida', 'foto inexistente é recusada');
+select throws_ok($$ select * from pg_temp.reg('https://casayes.pt/f4', 'FOTO-4', 'Imob', 300000, 'T2', 'Lisboa', null, '99999999-9999-9999-9999-999999999999.jpg') $$, '22023', 'foto inválida', 'foto de outro consultor é recusada');
 
 -- mesma referência noutra zona separa
 select is((select estado from pg_temp.reg('https://casayes.pt/z1', 'REF 1', 'Imobiliária Norte', 390000, 'T2', 'Lisboa', '+351900000001', null, 'Alvalade')), 'novo', 'mesma referência noutra zona separa');
