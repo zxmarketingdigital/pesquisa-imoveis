@@ -8,7 +8,7 @@ export function PainelContacto({ linha, compradorId, fechar, aoContacto }: { lin
   const i = linha.imovel;
   const [canal, setCanal] = useState<Canal>(canalPadrao(i) ?? 'whatsapp');
   const [texto, setTexto] = useState(() => mensagemParaConsultor(i,linha.aConfirmar));
-  const [ultimoId, setUltimoId] = useState<string | null>(linha.contacto?.id ?? null);
+  const [ultimoId, setUltimoId] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -32,8 +32,9 @@ export function PainelContacto({ linha, compradorId, fechar, aoContacto }: { lin
       // mesmo com a resposta perdida, e repetir não pode duplicar nem deixar contactos para trás ao desfazer.
       const existentes = (await listarContactos(compradorId)).filter(c => c.imovelId === i.id);
       if (tipo === 'desfazer' && ultimoId) {
-        for (const c of existentes) { await desfazerContacto(c.id); aoContacto(null,c.id); }
-        if (!existentes.some(c => c.id === ultimoId)) aoContacto(null,ultimoId);
+        // Só desfaz o contacto marcado neste painel, nunca outros registos do par.
+        if (existentes.some(c => c.id === ultimoId)) await desfazerContacto(ultimoId);
+        aoContacto(null,ultimoId);
         setUltimoId(null); setFeedback('Contacto desfeito.');
       }
       else if (tipo === 'marcar') {

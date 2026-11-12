@@ -111,7 +111,7 @@ export function Mesa() {
       if (formato === 'csv') { descarregar(gerarCSV(dados),'text/csv;charset=utf-8','csv'); setStatus(`CSV preparado com ${dados.length} imóveis.`); }
       else { const r = await gerarXLSX(dados,obterFoto); if (!atual()) return; descarregar(r.dados,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','xlsx'); setStatus(`Excel preparado com ${dados.length} imóveis.${r.semFoto > 0 ? ` ${r.semFoto} fotografias ficaram de fora.` : ''}`); }
     } catch(e) { if (atual()) { setErroAcao(mensagemErro(e)); repetirAcao.current = () => void exportarAtual.current(formato); } }
-    finally { if (atual()) setExportando(false); }
+    finally { if (montado.current && exportacao.current === geracao) setExportando(false); }
   }
   // A repetição da exportação usa a seleção atual, não a do render em que falhou.
   const exportarAtual = useRef(exportar);
