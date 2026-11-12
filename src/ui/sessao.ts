@@ -1,23 +1,35 @@
 import { supabase } from '../dados/cliente';
 
-// Sobrevive a uma navegação antes de a resposta de logout chegar, sem guardar dados pessoais.
 const SAIDA_PENDENTE = 'mesa-consultor-saida-pendente';
-// Rede pendurada não pode prender a saída: depois disto limpa-se só a sessão local.
 const LIMITE_SAIDA_MS = 8000;
+const LIMITE_LOCAL_MS = 3000;
+const CHAVE_SESSAO = /^sb-.+-auth-token(-code-verifier)?$/;
+
 export const saidaPendente = (): boolean => sessionStorage.getItem(SAIDA_PENDENTE) === '1';
+
+function comLimite<T>(pedido: Promise<T>, ms: number): Promise<T | 'tempo'> {
+  return Promise.race([pedido, new Promise<'tempo'>((r) => { setTimeout(() => r('tempo'), ms); })]);
+}
+
+// Último recurso: o supabase-js serializa a auth com um lock, e um signOut pendurado
+// pode prender também o signOut local. Apaga a sessão guardada e recarrega a página.
+function apagarSessaoGuardada(): void {
+  for (const chave of Object.keys(localStorage)) if (CHAVE_SESSAO.test(chave)) localStorage.removeItem(chave);
+  window.location.reload();
+}
+
 export async function terminarSessao(): Promise<void> {
   sessionStorage.setItem(SAIDA_PENDENTE, '1');
   let falhou = false;
-  const limite = new Promise<'tempo'>((r) => { setTimeout(() => r('tempo'), LIMITE_SAIDA_MS); });
   try {
-    const r = await Promise.race([supabase.auth.signOut(), limite]);
+    const r = await comLimite(supabase.auth.signOut(), LIMITE_SAIDA_MS);
     falhou = r === 'tempo' || !!r.error;
   } catch { falhou = true; }
-  // Sem rede a revogação no servidor falha e o supabase-js mantém a sessão no navegador:
-  // remover sempre a sessão local para a Mesa não reabrir com os dados do consultor anterior.
   if (falhou) {
-    const { error } = await supabase.auth.signOut({ scope: 'local' });
-    if (error) throw error;
+    let local: Awaited<ReturnType<typeof supabase.auth.signOut>> | 'tempo';
+    try { local = await comLimite(supabase.auth.signOut({ scope: 'local' }), LIMITE_LOCAL_MS); }
+    catch { local = 'tempo'; }
+    if (local === 'tempo' || local.error) { apagarSessaoGuardada(); return; }
   }
   sessionStorage.removeItem(SAIDA_PENDENTE);
 }
