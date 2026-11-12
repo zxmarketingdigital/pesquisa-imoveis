@@ -20,6 +20,7 @@ declare
   v_imovel uuid;
   v_novo boolean;
   v_estado text;
+  v_ex record;
 begin
   if auth.uid() is null then
     raise exception 'sessão em falta' using errcode = '42501';
@@ -30,8 +31,25 @@ begin
     raise exception 'URL de anúncio inválido' using errcode = '22023';
   end if;
   if v_url !~* '^https?://' then v_url := 'https://' || v_url; end if;
+  -- "\" em qualquer parte e "@"/%40/%5c na autoridade desviam o host (ver normalizar_url)
+  if v_url ~ '\\' or split_part(split_part(split_part(regexp_replace(v_url, '^https?://', '', 'i'), '#', 1), '?', 1), '/', 1) ~* '[@\\]|%40|%5c' then
+    raise exception 'URL de anúncio inválido' using errcode = '22023';
+  end if;
   v_chave := public.normalizar_url(v_url);
+  if v_chave is null or v_chave = '' then
+    raise exception 'URL de anúncio inválido' using errcode = '22023';
+  end if;
   v_portal := public.portal_da_chave(v_chave);
+  -- A foto tem de existir no bucket e ser do próprio consultor. FOR SHARE segura o objeto até ao commit:
+  -- o delete concorrente (policy fotos_apagar_proprias, que não vê este registo ainda por confirmar)
+  -- espera, e se o delete já confirmou antes, aqui não há linha e a RPC falha.
+  if v_foto is not null then
+    perform 1 from storage.objects o
+    where o.bucket_id = 'fotos' and o.name = v_foto and o.owner_id = auth.uid()::text for share;
+    if not found then
+      raise exception 'foto inválida' using errcode = '22023';
+    end if;
+  end if;
   -- serializa registos do mesmo anúncio (evita imóvel órfão em corrida)
   perform pg_advisory_xact_lock(hashtextextended(v_portal || '|' || v_chave, 0));
 
@@ -39,19 +57,39 @@ begin
   where a.portal = v_portal and a.chave_portal = v_chave;
 
   if v_imovel is not null then
-    -- Decisão (MÉDIO3): atualiza o preço do anúncio e só preenche/atualiza campos que vieram
-    -- não nulos; contacto e foto existentes nunca são apagados por um nulo.
-    update public.anuncios a set preco = p_preco, url = v_url, ultima_vez = now()
+    -- Decisão: o banco é partilhado, por isso um registo nunca sobrescreve dados de outro.
+    -- Telefone, e-mail, nome do anunciante e foto só se preenchem quando estão vazios.
+    -- O preço é por anúncio (imoveis.preco = mínimo). Área, ano, nova e garagem: o último registo
+    -- vence (o anúncio reflete o portal), mas só com valores não nulos; o mesmo vale no ramo ligado. O url só muda se o anúncio guardado tiver a mesma chave
+    -- (o mesmo host), para um registo nunca trocar o link para outro domínio.
+    -- Identidade do imóvel partilhado (tipologia, concelho, zona) não muda por re-registo: se divergir,
+    -- recusa com mensagem legível em vez de descartar em silêncio. Referência (quando vazia) preenche-se
+    -- como o telefone, desde que não colida com outro imóvel; a imobiliária é obrigatória e nunca muda.
+    select i.tipologia, i.concelho, i.zona, i.concelho_norm, i.zona_norm into v_ex
+    from public.imoveis i where i.id = v_imovel;
+    if v_ex.tipologia is distinct from p_tipologia
+       or v_ex.concelho_norm is distinct from public.normalizar_nome(p_concelho)
+       or v_ex.zona_norm is distinct from public.normalizar_nome(p_zona) then
+      raise exception 'Este anúncio já está registado como % em % / %.', v_ex.tipologia, v_ex.concelho, v_ex.zona
+        using errcode = '22023';
+    end if;
+    update public.anuncios a set preco = p_preco,
+      url = case when public.normalizar_url(a.url) = v_chave then v_url else a.url end,
+      ultima_vez = now()
     where a.portal = v_portal and a.chave_portal = v_chave;
     update public.imoveis i set
       area_m2 = coalesce(p_area, i.area_m2),
       ano_construcao = coalesce(p_ano, i.ano_construcao),
       construcao_nova = coalesce(p_nova, i.construcao_nova),
       garagem = coalesce(p_garagem, i.garagem),
-      consultor_nome = coalesce(v_consultor, i.consultor_nome),
-      telefone = coalesce(v_telefone, i.telefone),
-      email = coalesce(v_email, i.email),
-      foto_caminho = coalesce(v_foto, i.foto_caminho),
+      referencia = coalesce(i.referencia, case when v_ref is not null and not exists (
+        select 1 from public.imoveis o where o.id <> i.id and o.referencia_norm = public.normalizar_referencia(v_ref)
+          and o.imobiliaria_norm = i.imobiliaria_norm and o.tipologia = i.tipologia
+          and o.concelho_norm = i.concelho_norm and o.zona_norm = i.zona_norm) then v_ref end),
+      consultor_nome = coalesce(i.consultor_nome, v_consultor),
+      telefone = coalesce(i.telefone, v_telefone),
+      email = coalesce(i.email, v_email),
+      foto_caminho = coalesce(i.foto_caminho, v_foto),
       ultima_vez = now()
     where i.id = v_imovel;
     v_estado := 'atualizado';
@@ -60,12 +98,12 @@ begin
       ano_construcao, construcao_nova, garagem, consultor_nome, telefone, email, foto_caminho, origem)
     values (v_ref, p_imobiliaria, p_tipologia, p_preco, p_area, p_concelho, p_zona,
       p_ano, p_nova, p_garagem, v_consultor, v_telefone, v_email, v_foto, 'manual')
-    on conflict (referencia_norm, imobiliaria_norm, tipologia, concelho_norm) where referencia_norm <> ''
+    on conflict (referencia_norm, imobiliaria_norm, tipologia, concelho_norm, zona_norm) where referencia_norm <> ''
     do update set
-      area_m2 = coalesce(i.area_m2, excluded.area_m2),
-      ano_construcao = coalesce(i.ano_construcao, excluded.ano_construcao),
-      construcao_nova = coalesce(i.construcao_nova, excluded.construcao_nova),
-      garagem = coalesce(i.garagem, excluded.garagem),
+      area_m2 = coalesce(excluded.area_m2, i.area_m2),
+      ano_construcao = coalesce(excluded.ano_construcao, i.ano_construcao),
+      construcao_nova = coalesce(excluded.construcao_nova, i.construcao_nova),
+      garagem = coalesce(excluded.garagem, i.garagem),
       consultor_nome = coalesce(i.consultor_nome, excluded.consultor_nome),
       telefone = coalesce(i.telefone, excluded.telefone),
       email = coalesce(i.email, excluded.email),
@@ -79,7 +117,12 @@ begin
     v_estado := case when v_novo then 'novo' else 'ligado' end;
   end if;
 
-  -- regra única de preço: o do imóvel é o mínimo dos preços dos seus anúncios
+  -- Regra única de preço: o do imóvel é o mínimo dos preços dos seus anúncios.
+  -- Anúncios do mesmo imóvel têm chaves diferentes, logo o lock por chave não os serializa; sem este
+  -- lock por imóvel, duas transações concorrentes calculariam o mínimo com snapshots que não veem o
+  -- anúncio da outra. O UPDATE abaixo é um statement novo, por isso (READ COMMITTED) já vê o commit
+  -- da transação que segurava o lock.
+  perform 1 from public.imoveis i where i.id = v_imovel for update;
   update public.imoveis i set preco = (select min(a.preco) from public.anuncios a where a.imovel_id = i.id)
   where i.id = v_imovel;
 
@@ -100,10 +143,15 @@ begin
 end $$;
 
 create function public.atualizar_pesquisa(p_pesquisa uuid) returns void
-language sql security invoker set search_path = public as $$
+language plpgsql security invoker set search_path = public as $$
+declare v_id uuid;
+begin
   update pesquisas set novos_desde = now(), ultima_atualizacao = now()
-  where id = p_pesquisa;
-$$;
+  where id = p_pesquisa returning id into v_id;
+  if v_id is null then  -- inexistente ou de outro consultor (a RLS esconde-a): nunca "sucesso" com 0 linhas
+    raise exception 'pesquisa não encontrada' using errcode = 'P0002';
+  end if;
+end $$;
 
 revoke execute on function public.registar_anuncio from anon, public;
 revoke execute on function public.criar_comprador from anon, public;

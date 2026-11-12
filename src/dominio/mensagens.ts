@@ -13,7 +13,10 @@ export function mensagemParaConsultor(i: Imovel, emFalta: CampoEmFalta[]): strin
   const nome = i.consultorNome?.trim().split(/\s+/)[0];
   const saudacao = nome ? `Olá, ${nome}.` : `Olá, equipa da ${i.imobiliaria}.`;
   const referencia = i.referencia ? `, referência ${i.referencia}` : '';
-  const onde = ARTIGO[i.anuncios[0]?.portal ?? 'Outro'];
+  // cita o portal do anúncio com o preço que vai na mensagem (imoveis.preco = mínimo dos anúncios)
+  const comPreco = i.anuncios.filter((a) => typeof a.preco === 'number');
+  const doPreco = comPreco.length ? comPreco.reduce((m, a) => (a.preco! < m.preco! ? a : m)) : i.anuncios[0];
+  const onde = ARTIGO[doPreco?.portal ?? 'Outro'];
   const perguntaAno = emFalta.includes('ano') ? ' Pode indicar-me o ano de construção?' : '';
   const perguntaGaragem = emFalta.includes('garagem') ? ' Pode confirmar se inclui garagem?' : '';
   return `${saudacao} Tenho um comprador interessado no ${i.tipologia} em ${i.zona}${referencia}, anunciado ${onde} por ${formatarPreco(i.preco)}. O imóvel continua disponível?${perguntaAno}${perguntaGaragem} Obrigado.`;

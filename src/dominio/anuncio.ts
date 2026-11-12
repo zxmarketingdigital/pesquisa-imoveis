@@ -8,6 +8,7 @@ const PORTAIS: ReadonlyArray<[string, Portal]> = [
 
 export interface AnuncioInterpretado { portal: Portal; chave: string; url: string }
 
+const HOST_VALIDO = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 const TRACKING = /^(utm_.*|fbclid|gclid)$/i;
 
 /**
@@ -24,7 +25,7 @@ function normalizarChave(url: string): string {
   const ib = resto.indexOf('/');
   const hostBruto = ib === -1 ? resto : resto.slice(0, ib);
   const caminho = (ib === -1 ? '' : resto.slice(ib)).replace(/\/+$/, '');
-  const host = hostBruto.replace(/^[^@]*@/, '').replace(/:\d*$/, '').toLowerCase().replace(/^(www|m)\./, '');
+  const host = hostBruto.replace(/^[^@]*@/, '').replace(/:\d*$/, '').toLowerCase().replace(/\.+$/, '').replace(/^(www|m)\./, '');
   const params = query.split('&').filter((p) => p !== '' && !TRACKING.test(p.split('=')[0]!)).sort();
   return `${host}${caminho}${params.length ? `?${params.join('&')}` : ''}`;
 }
@@ -36,11 +37,19 @@ export function interpretarUrlAnuncio(texto: string): AnuncioInterpretado | null
     if (/^(javascript|data|vbscript|file|mailto):/i.test(bruto)) return null;
     bruto = `https://${bruto}`; // aceita URL colado sem protocolo (o servidor faz o mesmo)
   }
+  // "\\" em qualquer parte e "@"/%40/%5c na autoridade desviam o host (o parser WHATWG trata "\\" como
+  // fim da autoridade). O servidor recusa o mesmo.
+  if (bruto.includes('\\')) return null;
+  const autoridade = bruto.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '').split(/[/?#]/)[0]!;
+  if (/[@\\]|%40|%5c/i.test(autoridade)) return null;
   let u: URL;
   try { u = new URL(bruto); } catch { return null; }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
   const chave = normalizarChave(bruto);
+  // o host que o navegador vai abrir tem de ser o da chave
+  if (u.hostname.toLowerCase().replace(/\.+$/, '').replace(/^(www|m)\./, '') !== chave.split(/[/?]/)[0]) return null;
   const host = chave.split(/[/?]/)[0]!;
+  if (!HOST_VALIDO.test(host)) return null; // sem host válido (ex.: "https:///x", "https://?id=5")
   const portal = PORTAIS.find(([d]) => host === d || host.endsWith(`.${d}`))?.[1] ?? 'Outro';
   u.hash = '';
   return { portal, chave, url: u.toString().replace(/\/+(\?|$)/, '$1') };

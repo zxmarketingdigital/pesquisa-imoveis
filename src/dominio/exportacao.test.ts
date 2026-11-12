@@ -15,9 +15,9 @@ describe('gerarCSV', () => {
     expect(gerarCSV([linha]).startsWith('﻿')).toBe(true);
     expect(linhas[0]).toBe(CABECALHOS.map((c) => `"${c}"`).join(';'));
   });
-  it('escapa aspas e mantém telefone válido', () => {
+  it('escapa aspas e prefixa o telefone com +, que o Excel leria como fórmula', () => {
     expect(linhas[1]).toContain('"Marta ""M"" Exemplo"');
-    expect(linhas[1]).toContain('"+351 900 000 001"');
+    expect(linhas[1]).toContain(`"'+351 900 000 001"`);
   });
   it('neutraliza fórmula em qualquer campo de texto', () => {
     const csv = gerarCSV([{ ...linha, consultor: '=HYPERLINK("x")', telefone: '+SOMA(1)' }]);
@@ -31,14 +31,25 @@ describe('gerarCSV: neutralização', () => {
   it.each(['-1+2', '@SOMA(1)', '\tcmd', '\rcmd', '=1+1', '+1+1'])('prefixa %j em campo de texto', (valor) => {
     expect(corpo({ consultor: valor })).toContain(`"'${valor.replace(/"/g, '""')}"`);
   });
+  it('prefixa também quando o 1.º caractere não-espaço é perigoso', () => {
+    expect(corpo({ consultor: ' =HYPERLINK("x")' })).toContain(`"' =HYPERLINK(""x"")"`);
+  });
+  it('decimais saem com vírgula e sem separador de milhares', () => {
+    const l = corpo({ areaM2: 85.5, preco: 1234567.5 });
+    expect(l).toContain('"85,5"');
+    expect(l).toContain('"1234567,5"');
+    expect(corpo({ areaM2: 84 })).toContain('"84"');
+  });
   it('quebra de linha dentro do campo fica entre aspas', () => {
     expect(corpo({ consultor: 'a\nb' })).toContain('"a\nb"');
   });
-  it('telefone com - e () é normalizado e nunca vira fórmula', () => {
-    expect(corpo({ telefone: '+351 (21) 123-4567' })).toContain('"+351 21 123 4567"');
-    expect(corpo({ telefone: '+1-2' })).toContain('"+1 2"');
+  it('telefone com + (com espaços, - ou ()) leva sempre o prefixo', () => {
+    expect(corpo({ telefone: '+351 (21) 123-4567' })).toContain(`"'+351 (21) 123-4567"`);
+    expect(corpo({ telefone: '+351 912 345 678' })).toContain(`"'+351 912 345 678"`);
     expect(corpo({ telefone: '-1+2' })).toContain(`"'-1+2"`);
-    expect(corpo({ telefone: '+1+2' })).toContain(`"'+1+2"`);
+  });
+  it.each(['00351 912 345 678', '912345678', '+351 912345678'])('telefone %s sai como texto', (telefone) => {
+    expect(corpo({ telefone })).toContain(`"'${telefone}"`);
   });
 });
 
@@ -54,6 +65,17 @@ describe('gerarXLSX', () => {
     expect(folha.getImages()).toHaveLength(1);
     expect(folha.getRow(1).getCell(1).value).toBe('Foto');
     expect(folha.getRow(2).getCell(12).value).toBe('=1+1');
+  });
+
+  it('telefone vai como texto no XLSX, sem perder zeros nem o +', async () => {
+    for (const telefone of ['00351 912 345 678', '912345678', '+351 912345678']) {
+      const { dados } = await gerarXLSX([{ ...linha, telefone }], async () => JPEG);
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(dados);
+      const folha = wb.worksheets[0]!;
+      const coluna = (folha.getRow(1).values as unknown[]).indexOf('Telefone');
+      expect(folha.getRow(2).getCell(coluna).value).toBe(telefone);
+    }
   });
 
   it('conta foto que falhou e continua', async () => {
