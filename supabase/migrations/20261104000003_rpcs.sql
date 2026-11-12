@@ -88,7 +88,12 @@ begin
     v_estado := case when v_novo then 'novo' else 'ligado' end;
   end if;
 
-  -- regra única de preço: o do imóvel é o mínimo dos preços dos seus anúncios
+  -- Regra única de preço: o do imóvel é o mínimo dos preços dos seus anúncios.
+  -- Anúncios do mesmo imóvel têm chaves diferentes, logo o lock por chave não os serializa; sem este
+  -- lock por imóvel, duas transações concorrentes calculariam o mínimo com snapshots que não veem o
+  -- anúncio da outra. O UPDATE abaixo é um statement novo, por isso (READ COMMITTED) já vê o commit
+  -- da transação que segurava o lock.
+  perform 1 from public.imoveis i where i.id = v_imovel for update;
   update public.imoveis i set preco = (select min(a.preco) from public.anuncios a where a.imovel_id = i.id)
   where i.id = v_imovel;
 

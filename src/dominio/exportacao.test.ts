@@ -39,6 +39,9 @@ describe('gerarCSV: neutralização', () => {
     expect(corpo({ telefone: '+351 912 345 678' })).toContain(`"'+351 912 345 678"`);
     expect(corpo({ telefone: '-1+2' })).toContain(`"'-1+2"`);
   });
+  it.each(['00351 912 345 678', '912345678', '+351 912345678'])('telefone %s sai como texto', (telefone) => {
+    expect(corpo({ telefone })).toContain(`"'${telefone}"`);
+  });
 });
 
 describe('gerarXLSX', () => {
@@ -53,6 +56,17 @@ describe('gerarXLSX', () => {
     expect(folha.getImages()).toHaveLength(1);
     expect(folha.getRow(1).getCell(1).value).toBe('Foto');
     expect(folha.getRow(2).getCell(12).value).toBe('=1+1');
+  });
+
+  it('telefone vai como texto no XLSX, sem perder zeros nem o +', async () => {
+    for (const telefone of ['00351 912 345 678', '912345678', '+351 912345678']) {
+      const { dados } = await gerarXLSX([{ ...linha, telefone }], async () => JPEG);
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(dados);
+      const folha = wb.worksheets[0]!;
+      const coluna = (folha.getRow(1).values as unknown[]).indexOf('Telefone');
+      expect(folha.getRow(2).getCell(coluna).value).toBe(telefone);
+    }
   });
 
   it('conta foto que falhou e continua', async () => {
