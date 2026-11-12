@@ -15,9 +15,9 @@ describe('gerarCSV', () => {
     expect(gerarCSV([linha]).startsWith('﻿')).toBe(true);
     expect(linhas[0]).toBe(CABECALHOS.map((c) => `"${c}"`).join(';'));
   });
-  it('escapa aspas e mantém telefone válido', () => {
+  it('escapa aspas e prefixa o telefone com +, que o Excel leria como fórmula', () => {
     expect(linhas[1]).toContain('"Marta ""M"" Exemplo"');
-    expect(linhas[1]).toContain('"+351 900 000 001"');
+    expect(linhas[1]).toContain(`"'+351 900 000 001"`);
   });
   it('neutraliza fórmula em qualquer campo de texto', () => {
     const csv = gerarCSV([{ ...linha, consultor: '=HYPERLINK("x")', telefone: '+SOMA(1)' }]);
@@ -34,11 +34,10 @@ describe('gerarCSV: neutralização', () => {
   it('quebra de linha dentro do campo fica entre aspas', () => {
     expect(corpo({ consultor: 'a\nb' })).toContain('"a\nb"');
   });
-  it('telefone com - e () é normalizado e nunca vira fórmula', () => {
-    expect(corpo({ telefone: '+351 (21) 123-4567' })).toContain('"+351 21 123 4567"');
-    expect(corpo({ telefone: '+1-2' })).toContain('"+1 2"');
+  it('telefone com + (com espaços, - ou ()) leva sempre o prefixo', () => {
+    expect(corpo({ telefone: '+351 (21) 123-4567' })).toContain(`"'+351 (21) 123-4567"`);
+    expect(corpo({ telefone: '+351 912 345 678' })).toContain(`"'+351 912 345 678"`);
     expect(corpo({ telefone: '-1+2' })).toContain(`"'-1+2"`);
-    expect(corpo({ telefone: '+1+2' })).toContain(`"'+1+2"`);
   });
 });
 
