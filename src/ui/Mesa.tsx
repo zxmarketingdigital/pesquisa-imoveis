@@ -29,6 +29,7 @@ export function Mesa() {
   compradorAtual.current = compradorId;
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [contactos, setContactos] = useState<Contacto[]>([]);
+  const dadosDe = useRef<string | null>(null);
   const [listaVersao, setListaVersao] = useState(0);
   const [dadosVersao, setDadosVersao] = useState(0);
   const [lerLista, setLerLista] = useState(true);
@@ -59,7 +60,9 @@ export function Mesa() {
     return () => { ativo = false; };
   },[listaVersao]);
   useEffect(() => {
-    let ativo = true; setImoveis([]); setContactos([]); setErroDados('');
+    let ativo = true; setErroDados('');
+    // Só esvazia ao trocar de comprador: um refetch do mesmo comprador mantém seleção e painel abertos.
+    if (dadosDe.current !== compradorId) { setImoveis([]); setContactos([]); dadosDe.current = compradorId; }
     if (!pesquisa || !compradorId) { setLerDados(false); return; }
     setLerDados(true);
     void Promise.all([imoveisCandidatos(pesquisa),listarContactos(compradorId)]).then(([lista,historico]) => { if (ativo) { setImoveis(lista); setContactos(historico); } }).catch(e => { if (ativo) setErroDados(mensagemErro(e)); }).finally(() => { if (ativo) setLerDados(false); });
@@ -80,8 +83,9 @@ export function Mesa() {
   function escolher(id: string) { if (exportando) return; setCompradorId(id); setAberto(null); setFiltro('todos'); setQuery(''); setSelecionados(new Set()); setStatus(''); setErroAcao(''); }
   async function atualizar() {
     if (!pesquisa || ocupado) return; setOcupado(true); setErroAcao('');
-    try { await atualizarPesquisa(pesquisa.id); setListaVersao(n => n + 1); setStatus('Pesquisa atualizada.'); }
-    catch(e) { setErroAcao(mensagemErro(e)); repetirAcao.current = () => void atualizar(); }
+    const origemId = compradorAtual.current;
+    try { await atualizarPesquisa(pesquisa.id); setListaVersao(n => n + 1); if (compradorAtual.current === origemId) setStatus('Pesquisa atualizada.'); }
+    catch(e) { if (compradorAtual.current === origemId) { setErroAcao(mensagemErro(e)); repetirAcao.current = () => void atualizar(); } }
     finally { setOcupado(false); }
   }
   async function sair() {
