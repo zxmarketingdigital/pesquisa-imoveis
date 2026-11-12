@@ -31,6 +31,12 @@ create policy fotos_enviar on storage.objects for insert to authenticated
   with check (bucket_id = 'fotos'
     and name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$');
 
--- O consultor pode apagar as suas próprias fotos (ex.: upload órfão). Quota por utilizador: fora da V1.
-create policy fotos_apagar_proprias on storage.objects for delete to authenticated
+-- Sem policy de SELECT o delete não vê as linhas; o consultor só vê os seus objetos (o bucket é público para leitura por URL).
+create policy fotos_ver_proprias on storage.objects for select to authenticated
   using (bucket_id = 'fotos' and owner_id = (select auth.uid())::text);
+
+-- O consultor pode apagar as suas próprias fotos (ex.: upload órfão), mas nunca uma foto que um
+-- imóvel partilhado já usa. Quota por utilizador: fora da V1.
+create policy fotos_apagar_proprias on storage.objects for delete to authenticated
+  using (bucket_id = 'fotos' and owner_id = (select auth.uid())::text
+    and not exists (select 1 from public.imoveis i where i.foto_caminho = name));

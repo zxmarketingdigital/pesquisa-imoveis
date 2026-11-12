@@ -13,6 +13,8 @@ $$;
 -- Chave de dedup calculada no servidor: o cliente nunca decide o que é "o mesmo anúncio".
 -- minúsculas no host, sem protocolo/credenciais/porta, sem www./m., sem fragmento,
 -- sem utm_*/fbclid/gclid, parâmetros restantes ordenados, sem barra final.
+-- Recusa "\" em qualquer parte e "@" (ou %40/%5c) na autoridade: o parser WHATWG trata "\" como fim
+-- da autoridade, e "https://evil.example\@imovirtual.com" desviaria a chave para outro host.
 create function public.normalizar_url(u text) returns text
 language plpgsql immutable parallel safe set search_path = '' as $$
 declare
@@ -20,11 +22,14 @@ declare
   v_resto text; v_query text := ''; v_host text; v_path text; v_params text;
 begin
   s := regexp_replace(s, '^[a-zA-Z][a-zA-Z0-9+.-]*://', '');
+  if s ~ '\\' or split_part(split_part(regexp_replace(s, '^[a-zA-Z][a-zA-Z0-9+.-]*://', ''), '?', 1), '/', 1) ~* '[@\\]|%40|%5c' then
+    raise exception 'URL com autoridade inválida' using errcode = '22023';
+  end if;
   v_resto := split_part(s, '?', 1);
   if position('?' in s) > 0 then v_query := substr(s, position('?' in s) + 1); end if;
   v_host := split_part(v_resto, '/', 1);
   v_path := substr(v_resto, length(v_host) + 1);
-  v_host := lower(regexp_replace(regexp_replace(v_host, '^[^@]*@', ''), ':\d*$', ''));
+  v_host := lower(regexp_replace(v_host, ':\d*$', ''));
   v_host := regexp_replace(v_host, '^(www|m)\.', '');
   v_path := regexp_replace(v_path, '/+$', '');
   select coalesce(string_agg(p, '&' order by p collate "C"), '') into v_params
@@ -62,7 +67,7 @@ create table public.pesquisas (
   id uuid primary key default gen_random_uuid(),
   comprador_id uuid not null unique references public.compradores(id) on delete cascade,
   tipologia text not null check (tipologia in ('T0','T1','T2','T3','T4','T5+')),
-  preco_max numeric(12,2) not null check (preco_max > 0),
+  preco_max numeric(12,2) not null check (preco_max > 0 and preco_max <> 'NaN'),
   zonas text[] not null check (cardinality(zonas) > 0),
   garagem_obrigatoria boolean not null default false,
   menos_de_anos integer check (menos_de_anos is null or menos_de_anos between 1 and 100),
@@ -77,11 +82,12 @@ create table public.imoveis (
   imobiliaria text not null check (char_length(trim(imobiliaria)) between 1 and 160),
   imobiliaria_norm text generated always as (public.normalizar_nome(imobiliaria)) stored,
   tipologia text not null check (tipologia in ('T0','T1','T2','T3','T4','T5+')),
-  preco numeric(12,2) not null check (preco > 0),
-  area_m2 numeric(8,2) check (area_m2 is null or area_m2 > 0),
+  preco numeric(12,2) not null check (preco > 0 and preco <> 'NaN'),
+  area_m2 numeric(8,2) check (area_m2 is null or (area_m2 > 0 and area_m2 <> 'NaN')),
   concelho text not null check (char_length(concelho) between 1 and 120),
   concelho_norm text generated always as (public.normalizar_nome(concelho)) stored,
   zona text not null check (char_length(zona) between 1 and 120),
+  zona_norm text generated always as (public.normalizar_nome(zona)) stored,
   ano_construcao integer check (ano_construcao is null or ano_construcao between 1800 and 2100),
   construcao_nova boolean,
   garagem boolean,
@@ -95,15 +101,15 @@ create table public.imoveis (
   primeira_vez timestamptz not null default now(),
   ultima_vez timestamptz not null default now()
 );
--- Só liga por referência quando imobiliária, tipologia e concelho coincidem (referências repetem-se entre imóveis diferentes).
-create unique index imoveis_referencia_unica on public.imoveis (referencia_norm, imobiliaria_norm, tipologia, concelho_norm) where referencia_norm <> '';
+-- Só liga por referência quando imobiliária, tipologia, concelho e zona coincidem (referências repetem-se entre imóveis diferentes).
+create unique index imoveis_referencia_unica on public.imoveis (referencia_norm, imobiliaria_norm, tipologia, concelho_norm, zona_norm) where referencia_norm <> '';
 create index imoveis_busca_idx on public.imoveis (tipologia, preco);
 
 create table public.anuncios (
   id uuid primary key default gen_random_uuid(),
   imovel_id uuid not null references public.imoveis(id) on delete cascade,
   portal text not null check (portal in ('Imovirtual','Casa Sapo','CasaYes','Outro')),
-  preco numeric(12,2) not null check (preco > 0), -- imoveis.preco = mínimo dos preços dos anúncios
+  preco numeric(12,2) not null check (preco > 0 and preco <> 'NaN'), -- imoveis.preco = mínimo dos preços dos anúncios
   chave_portal text not null check (char_length(chave_portal) between 1 and 500),
   url text not null check (url ~* '^https?://' and char_length(url) <= 2000),
   primeira_vez timestamptz not null default now(),

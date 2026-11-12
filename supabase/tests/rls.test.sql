@@ -1,5 +1,5 @@
 begin;
-select plan(30);
+select plan(35);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'rls-a@teste.local'),
@@ -40,6 +40,20 @@ with d as (delete from public.contactos returning 1) select is((select count(*) 
 select throws_ok($$ insert into storage.objects (bucket_id, name) values ('fotos', 'nao-uuid.png') $$, '42501', null, 'upload com nome fora do padrão é recusado');
 select lives_ok($$ insert into storage.objects (bucket_id, name, owner_id) values ('fotos', '22222222-2222-2222-2222-222222222222.jpg', '00000000-0000-0000-0000-00000000000b') $$, 'B envia foto com nome válido');
 select throws_ok($$ insert into storage.objects (bucket_id, name) values ('outro', '33333333-3333-3333-3333-333333333333.jpg') $$, '42501', null, 'upload noutro bucket é recusado');
+
+-- NaN no preço (escrita pela RPC; CHECK recusa)
+select throws_ok($$ select * from public.registar_anuncio('https://www.imovirtual.com/nan','RN','Norte','T2','NaN',80,'Lisboa','Lumiar',2024,false,true,null,null,null,null) $$, '23514', null, 'RPC recusa preço NaN');
+
+-- foto em uso por um imóvel partilhado não se apaga; foto livre própria sim
+select lives_ok($$ select * from public.registar_anuncio('https://www.imovirtual.com/foto','RF','Norte','T2',300000,80,'Lisboa','Lumiar',2024,false,true,null,null,null,'22222222-2222-2222-2222-222222222222.jpg') $$, 'B regista imóvel com a foto que enviou');
+insert into storage.objects (bucket_id, name, owner_id) values ('fotos', '44444444-4444-4444-4444-444444444444.jpg', '00000000-0000-0000-0000-00000000000b');
+set local storage.allow_delete_query = 'true';
+with d as (delete from storage.objects where name = '22222222-2222-2222-2222-222222222222.jpg' returning 1) select is((select count(*) from d), 0::bigint, 'foto em uso não se apaga, nem pelo dono');
+with d as (delete from storage.objects where name = '44444444-4444-4444-4444-444444444444.jpg' returning 1) select is((select count(*) from d), 1::bigint, 'foto própria sem uso apaga-se');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}';
+insert into storage.objects (bucket_id, name, owner_id) values ('fotos', '55555555-5555-5555-5555-555555555555.jpg', '00000000-0000-0000-0000-00000000000a');
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated"}';
+with d as (delete from storage.objects where name = '55555555-5555-5555-5555-555555555555.jpg' returning 1) select is((select count(*) from d), 0::bigint, 'B não apaga foto de A');
 
 -- anónimo
 reset role;

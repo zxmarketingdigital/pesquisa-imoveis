@@ -30,6 +30,10 @@ begin
     raise exception 'URL de anúncio inválido' using errcode = '22023';
   end if;
   if v_url !~* '^https?://' then v_url := 'https://' || v_url; end if;
+  -- "\" em qualquer parte e "@"/%40/%5c na autoridade desviam o host (ver normalizar_url)
+  if v_url ~ '\\' or split_part(split_part(split_part(regexp_replace(v_url, '^https?://', '', 'i'), '#', 1), '?', 1), '/', 1) ~* '[@\\]|%40|%5c' then
+    raise exception 'URL de anúncio inválido' using errcode = '22023';
+  end if;
   v_chave := public.normalizar_url(v_url);
   v_portal := public.portal_da_chave(v_chave);
   -- serializa registos do mesmo anúncio (evita imóvel órfão em corrida)
@@ -39,19 +43,24 @@ begin
   where a.portal = v_portal and a.chave_portal = v_chave;
 
   if v_imovel is not null then
-    -- Decisão (MÉDIO3): atualiza o preço do anúncio e só preenche/atualiza campos que vieram
-    -- não nulos; contacto e foto existentes nunca são apagados por um nulo.
-    update public.anuncios a set preco = p_preco, url = v_url, ultima_vez = now()
+    -- Decisão: o banco é partilhado, por isso um registo nunca sobrescreve dados de outro.
+    -- Telefone, e-mail, nome do anunciante e foto só se preenchem quando estão vazios.
+    -- O preço é por anúncio (imoveis.preco = mínimo). Área, ano, nova e garagem só são
+    -- atualizados com valores não nulos. O url só muda se o anúncio guardado tiver a mesma chave
+    -- (o mesmo host), para um registo nunca trocar o link para outro domínio.
+    update public.anuncios a set preco = p_preco,
+      url = case when public.normalizar_url(a.url) = v_chave then v_url else a.url end,
+      ultima_vez = now()
     where a.portal = v_portal and a.chave_portal = v_chave;
     update public.imoveis i set
       area_m2 = coalesce(p_area, i.area_m2),
       ano_construcao = coalesce(p_ano, i.ano_construcao),
       construcao_nova = coalesce(p_nova, i.construcao_nova),
       garagem = coalesce(p_garagem, i.garagem),
-      consultor_nome = coalesce(v_consultor, i.consultor_nome),
-      telefone = coalesce(v_telefone, i.telefone),
-      email = coalesce(v_email, i.email),
-      foto_caminho = coalesce(v_foto, i.foto_caminho),
+      consultor_nome = coalesce(i.consultor_nome, v_consultor),
+      telefone = coalesce(i.telefone, v_telefone),
+      email = coalesce(i.email, v_email),
+      foto_caminho = coalesce(i.foto_caminho, v_foto),
       ultima_vez = now()
     where i.id = v_imovel;
     v_estado := 'atualizado';
@@ -60,7 +69,7 @@ begin
       ano_construcao, construcao_nova, garagem, consultor_nome, telefone, email, foto_caminho, origem)
     values (v_ref, p_imobiliaria, p_tipologia, p_preco, p_area, p_concelho, p_zona,
       p_ano, p_nova, p_garagem, v_consultor, v_telefone, v_email, v_foto, 'manual')
-    on conflict (referencia_norm, imobiliaria_norm, tipologia, concelho_norm) where referencia_norm <> ''
+    on conflict (referencia_norm, imobiliaria_norm, tipologia, concelho_norm, zona_norm) where referencia_norm <> ''
     do update set
       area_m2 = coalesce(i.area_m2, excluded.area_m2),
       ano_construcao = coalesce(i.ano_construcao, excluded.ano_construcao),
