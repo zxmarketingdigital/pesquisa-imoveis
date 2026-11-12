@@ -13,20 +13,24 @@ create policy pesquisas_do_consultor on public.pesquisas for all to authenticate
   using (exists (select 1 from public.compradores c where c.id = comprador_id and c.consultor_id = auth.uid()))
   with check (exists (select 1 from public.compradores c where c.id = comprador_id and c.consultor_id = auth.uid()));
 
+-- PENDENTE RGPD: consultor_nome/telefone/email do anunciante são legíveis por todos os consultores.
+-- Modelo mantido de propósito até decisão do Rafael; não alterar sem ela.
 create policy imoveis_ler on public.imoveis for select to authenticated using (true);
-create policy imoveis_criar on public.imoveis for insert to authenticated with check (true);
-create policy imoveis_editar on public.imoveis for update to authenticated using (true) with check (true);
 
 create policy anuncios_ler on public.anuncios for select to authenticated using (true);
-create policy anuncios_criar on public.anuncios for insert to authenticated with check (true);
-create policy anuncios_editar on public.anuncios for update to authenticated using (true) with check (true);
 
 create policy contactos_do_consultor on public.contactos for all to authenticated
   using (consultor_id = auth.uid() and exists (select 1 from public.compradores c where c.id = comprador_id and c.consultor_id = auth.uid()))
   with check (consultor_id = auth.uid() and exists (select 1 from public.compradores c where c.id = comprador_id and c.consultor_id = auth.uid()));
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('fotos', 'fotos', true, 5242880, array['image/jpeg']);
+values ('fotos', 'fotos', true, 5242880, array['image/jpeg'])
+on conflict (id) do update set public = excluded.public, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 
 create policy fotos_enviar on storage.objects for insert to authenticated
-  with check (bucket_id = 'fotos');
+  with check (bucket_id = 'fotos'
+    and name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$');
+
+-- O consultor pode apagar as suas próprias fotos (ex.: upload órfão). Quota por utilizador: fora da V1.
+create policy fotos_apagar_proprias on storage.objects for delete to authenticated
+  using (bucket_id = 'fotos' and owner_id = (select auth.uid())::text);
