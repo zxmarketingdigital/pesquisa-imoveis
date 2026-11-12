@@ -1,5 +1,5 @@
 begin;
-select plan(40);
+select plan(46);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'rls-a@teste.local'),
@@ -49,25 +49,33 @@ select throws_ok($$ insert into storage.objects (bucket_id, name) values ('outro
 -- NaN no preço (escrita pela RPC; CHECK recusa)
 select throws_ok($$ select * from public.registar_anuncio('https://www.imovirtual.com/nan','RN','Norte','T2','NaN',80,'Lisboa','Lumiar',2024,false,true,null,null,null,null) $$, '23514', null, 'RPC recusa preço NaN');
 
--- foto em uso por um imóvel partilhado não se apaga; foto livre própria sim
+-- consultor não apaga fotos: nem em uso, nem livres, nem de outro
 select lives_ok($$ select * from public.registar_anuncio('https://www.imovirtual.com/foto','RF','Norte','T2',300000,80,'Lisboa','Lumiar',2024,false,true,null,null,null,'22222222-2222-2222-2222-222222222222.jpg') $$, 'B regista imóvel com a foto que enviou');
 insert into storage.objects (bucket_id, name, owner_id) values ('fotos', '44444444-4444-4444-4444-444444444444.jpg', '00000000-0000-0000-0000-00000000000b');
 set local storage.allow_delete_query = 'true';
 with d as (delete from storage.objects where name = '22222222-2222-2222-2222-222222222222.jpg' returning 1) select is((select count(*) from d), 0::bigint, 'foto em uso não se apaga, nem pelo dono');
-with d as (delete from storage.objects where name = '44444444-4444-4444-4444-444444444444.jpg' returning 1) select is((select count(*) from d), 1::bigint, 'foto própria sem uso apaga-se');
+with d as (delete from storage.objects where name = '44444444-4444-4444-4444-444444444444.jpg' returning 1) select is((select count(*) from d), 0::bigint, 'foto própria sem uso também não se apaga');
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}';
 insert into storage.objects (bucket_id, name, owner_id) values ('fotos', '55555555-5555-5555-5555-555555555555.jpg', '00000000-0000-0000-0000-00000000000a');
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated"}';
 with d as (delete from storage.objects where name = '55555555-5555-5555-5555-555555555555.jpg' returning 1) select is((select count(*) from d), 0::bigint, 'B não apaga foto de A');
 
+select throws_ok($$ insert into storage.objects (bucket_id, name, owner_id) values ('fotos', '66666666-6666-6666-6666-666666666666.jpg', '00000000-0000-0000-0000-00000000000a') $$, '42501', null, 'B não envia foto em nome de A');
+
 -- A não regista imóvel com a foto de B
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}';
 select throws_ok($$ select * from public.registar_anuncio('https://www.imovirtual.com/foto-alheia','RG','Norte','T2',300000,80,'Lisboa','Lumiar',2024,false,true,null,null,null,'22222222-2222-2222-2222-222222222222.jpg') $$, '22023', 'foto inválida', 'A não usa a foto de B');
 
--- FK: nem o dono do banco apaga um objeto que um imóvel usa (fecha a corrida com a RPC)
+
+-- trigger: nem o dono do banco apaga um objeto que um imóvel usa; foto livre apaga-se
 reset role;
 set local storage.allow_delete_query = 'true';
-select throws_ok($$ delete from storage.objects where name = '22222222-2222-2222-2222-222222222222.jpg' $$, '23503', null, 'delete direto de foto em uso falha por FK');
+select throws_ok($$ delete from storage.objects where name = '22222222-2222-2222-2222-222222222222.jpg' $$, '23503', 'foto em uso por um imóvel', 'delete direto de foto em uso falha pelo trigger');
+select throws_ok($$ update storage.objects set name = '99999999-9999-9999-9999-999999999999.jpg' where name = '22222222-2222-2222-2222-222222222222.jpg' $$, '23503', 'foto em uso por um imóvel', 'renomear foto em uso falha');
+select throws_ok($$ update storage.objects set archived_at = now() where name = '22222222-2222-2222-2222-222222222222.jpg' $$, '23503', 'foto em uso por um imóvel', 'arquivar foto em uso falha');
+select throws_ok($$ truncate storage.objects cascade $$, '23503', 'foto em uso por um imóvel', 'truncate com foto em uso falha');
+select lives_ok($$ update storage.objects set metadata = '{"x":1}' where name = '22222222-2222-2222-2222-222222222222.jpg' $$, 'atualizar metadados de foto em uso passa');
+with d as (delete from storage.objects where name = '44444444-4444-4444-4444-444444444444.jpg' returning 1) select is((select count(*) from d), 1::bigint, 'dono do banco apaga foto livre');
 
 -- anónimo
 reset role;

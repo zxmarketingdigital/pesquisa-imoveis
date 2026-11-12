@@ -29,14 +29,47 @@ on conflict (id) do update set public = excluded.public, file_size_limit = exclu
 
 create policy fotos_enviar on storage.objects for insert to authenticated
   with check (bucket_id = 'fotos'
-    and name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$');
+    and name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$'
+    and owner_id = (select auth.uid())::text);
 
--- Sem policy de SELECT o delete não vê as linhas; o consultor só vê os seus objetos (o bucket é público para leitura por URL).
+-- O consultor só vê os seus objetos (o bucket é público para leitura por URL).
 create policy fotos_ver_proprias on storage.objects for select to authenticated
   using (bucket_id = 'fotos' and owner_id = (select auth.uid())::text);
 
--- O consultor pode apagar as suas próprias fotos (ex.: upload órfão), mas nunca uma foto que um
--- imóvel partilhado já usa. Quota por utilizador: fora da V1.
-create policy fotos_apagar_proprias on storage.objects for delete to authenticated
-  using (bucket_id = 'fotos' and owner_id = (select auth.uid())::text
-    and not exists (select 1 from public.imoveis i where i.foto_caminho = name));
+-- Sem policy de DELETE: nenhum consultor apaga fotos, nem as suas. Assim uma foto em uso por um imóvel
+-- partilhado nunca some. Uploads órfãos limpam-se com a service role (fora da V1).
+
+-- A service role e o dono do banco não tiram do ar uma foto em uso: apagar, renomear, mudar de bucket,
+-- arquivar (archived_at) ou marcar como delete marker são recusados. O trigger é AFTER: corre depois de a
+-- operação esperar o FOR SHARE da RPC registar_anuncio, e a consulta usa snapshot nova, por isso vê o
+-- imóvel que a RPC confirmou e desfaz a operação. Limite: quem desligar o trigger (DISABLE TRIGGER,
+-- session_replication_role = replica) contorna a proteção; manutenção nunca deve fazê-lo neste bucket. O bucket não é versionado, por
+-- isso o índice único idx_objects_null_version do storage impede segunda linha com o mesmo nome.
+create or replace function public.proteger_foto_em_uso() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if tg_op = 'TRUNCATE' then
+    if exists (select 1 from public.imoveis where foto_caminho is not null) then
+      raise exception 'foto em uso por um imóvel' using errcode = '23503';
+    end if;
+    return null;
+  end if;
+  if old.bucket_id <> 'fotos' then
+    return null;
+  end if;
+  if tg_op = 'UPDATE' and new.bucket_id = old.bucket_id and new.name = old.name
+     and (to_jsonb(new)->>'archived_at') is null
+     and coalesce((to_jsonb(new)->>'is_delete_marker')::boolean, false) = false then
+    return null;
+  end if;
+  if exists (select 1 from public.imoveis i where i.foto_caminho = old.name) then
+    raise exception 'foto em uso por um imóvel' using errcode = '23503';
+  end if;
+  return null;
+end $$;
+revoke all on function public.proteger_foto_em_uso() from public, anon, authenticated;
+
+create trigger fotos_proteger_em_uso after update or delete on storage.objects
+  for each row execute function public.proteger_foto_em_uso();
+create trigger fotos_proteger_truncate before truncate on storage.objects
+  for each statement execute function public.proteger_foto_em_uso();

@@ -40,9 +40,8 @@ begin
     raise exception 'URL de anúncio inválido' using errcode = '22023';
   end if;
   v_portal := public.portal_da_chave(v_chave);
-  -- A foto tem de existir no bucket e ser do próprio consultor. FOR SHARE segura o objeto até ao commit:
-  -- o delete concorrente (policy fotos_apagar_proprias, que não vê este registo ainda por confirmar)
-  -- espera, e se o delete já confirmou antes, aqui não há linha e a RPC falha.
+  -- A foto tem de existir no bucket e ser do próprio consultor. O consultor não pode apagar fotos (sem
+  -- policy de DELETE); FOR SHARE segura o objeto até ao commit contra um delete feito por admin.
   if v_foto is not null then
     perform 1 from storage.objects o
     where o.bucket_id = 'fotos' and o.name = v_foto and o.owner_id = auth.uid()::text for share;
