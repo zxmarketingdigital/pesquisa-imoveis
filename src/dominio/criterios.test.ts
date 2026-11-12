@@ -39,6 +39,10 @@ describe('avaliar', () => {
     expect(avaliar({ ...imovel, anoConstrucao: null, construcaoNova: true }, pesquisa, ANO))
       .toEqual({ entra: true, aConfirmar: [] });
   });
+  it('construção nova com ano conhecido aplica a regra de idade', () => {
+    expect(avaliar({ ...imovel, construcaoNova: true, anoConstrucao: 2000 }, pesquisa, ANO)).toEqual({ entra: false });
+    expect(avaliar({ ...imovel, construcaoNova: true, anoConstrucao: 2025 }, pesquisa, ANO)).toEqual({ entra: true, aConfirmar: [] });
+  });
   it('sem critério de garagem ou idade não pede confirmação', () => {
     const livre = { ...pesquisa, garagemObrigatoria: false, menosDeAnos: null };
     expect(avaliar({ ...imovel, anoConstrucao: null, garagem: null }, livre, ANO)).toEqual({ entra: true, aConfirmar: [] });
@@ -52,5 +56,8 @@ describe('ehNovo', () => {
   it('compara com o corte', () => {
     expect(ehNovo('2026-11-04T09:00:00Z', '2026-11-04T08:00:00Z')).toBe(true);
     expect(ehNovo('2026-11-04T07:00:00Z', '2026-11-04T08:00:00Z')).toBe(false);
+  });
+  it('primeira vez igual ao corte não é novo', () => {
+    expect(ehNovo('2026-11-04T08:00:00Z', '2026-11-04T08:00:00Z')).toBe(false);
   });
 });

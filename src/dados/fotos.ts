@@ -1,8 +1,12 @@
 import { supabase } from './cliente';
 
 const LADO_MAXIMO = 1200;
+const TAMANHO_MAXIMO = 5 * 1024 * 1024; // igual ao file_size_limit do bucket
+const CAMINHO_FOTO = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/;
 
 export async function comprimirParaJpeg(ficheiro: Blob): Promise<Blob> {
+  if (!ficheiro.type.startsWith('image/')) throw new Error('O ficheiro não é uma imagem');
+  if (ficheiro.size > TAMANHO_MAXIMO) throw new Error('A imagem tem mais de 5 MB');
   const imagem = await createImageBitmap(ficheiro);
   const escala = Math.min(1, LADO_MAXIMO / Math.max(imagem.width, imagem.height));
   const canvas = document.createElement('canvas');
@@ -19,11 +23,19 @@ export async function comprimirParaJpeg(ficheiro: Blob): Promise<Blob> {
   });
 }
 
+/** Envia a foto e devolve o CAMINHO no bucket (<uuid>.jpg), que é o que a RPC guarda. */
 export async function enviarFoto(ficheiro: Blob): Promise<string> {
   const jpeg = await comprimirParaJpeg(ficheiro);
+  if (jpeg.size > TAMANHO_MAXIMO) throw new Error('A imagem comprimida continua acima de 5 MB');
   const caminho = `${crypto.randomUUID()}.jpg`;
   const { error } = await supabase.storage.from('fotos').upload(caminho, jpeg, { contentType: 'image/jpeg', upsert: false });
   if (error) throw new Error(`Enviar foto: ${error.message}`);
+  return caminho;
+}
+
+/** URL público de uma foto guardada; nulo se o caminho não for do formato esperado. */
+export function urlDaFoto(caminho: string | null): string | null {
+  if (!caminho || !CAMINHO_FOTO.test(caminho)) return null;
   return supabase.storage.from('fotos').getPublicUrl(caminho).data.publicUrl;
 }
 

@@ -8,9 +8,12 @@ export function avaliar(i: Imovel, p: Pesquisa, anoAtual: number): Avaliacao {
 
   const aConfirmar: CampoEmFalta[] = [];
 
-  if (p.menosDeAnos !== null && i.construcaoNova !== true) {
-    if (i.anoConstrucao === null) aConfirmar.push('ano');
-    else if (anoAtual - i.anoConstrucao >= p.menosDeAnos) return { entra: false };
+  if (p.menosDeAnos !== null) {
+    // Com ano conhecido a regra de idade aplica-se sempre (mesmo com "construção nova" marcada);
+    // sem ano, construção nova dispensa a confirmação.
+    if (i.anoConstrucao !== null) {
+      if (anoAtual - i.anoConstrucao >= p.menosDeAnos) return { entra: false };
+    } else if (i.construcaoNova !== true) aConfirmar.push('ano');
   }
 
   if (p.garagemObrigatoria) {
