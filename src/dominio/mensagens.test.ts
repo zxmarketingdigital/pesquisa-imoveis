@@ -40,13 +40,22 @@ describe('normalizarTelefone', () => {
     ['912 345 678', '351912345678'],
     ['+55 11 91234-5678', '5511912345678'],
   ])('%s', (entrada, saida) => expect(normalizarTelefone(entrada)).toBe(saida));
-  it.each(['', '123', 'abc', '+1234567890123456'])('recusa %s', (entrada) => expect(normalizarTelefone(entrada)).toBeNull());
+  it.each(['', '123', 'abc', '+1234567890123456', '351912345678', '5511912345678', '812345678', '+912345678', '+212345678'])('recusa %s', (entrada) => expect(normalizarTelefone(entrada)).toBeNull());
   it('recusa nulo', () => expect(normalizarTelefone(null)).toBeNull());
 });
 
 it('gera ligação de WhatsApp só com telefone válido', () => {
   expect(ligacaoWhatsApp('+351 900 000 002', 'Olá & até já')).toBe('https://wa.me/351900000002?text=Ol%C3%A1%20%26%20at%C3%A9%20j%C3%A1');
   expect(ligacaoWhatsApp('123', 'x')).toBeNull();
+});
+
+it('mailto recusa % e # no e-mail', () => {
+  expect(ligacaoEmail('rui%0Abcc@exemplo.pt', 'a', 'b')).toBeNull();
+  expect(ligacaoEmail('rui#x@exemplo.pt', 'a', 'b')).toBeNull();
+});
+
+it('wa.me recusa + seguido de 9 dígitos sem indicativo', () => {
+  expect(ligacaoWhatsApp('+912345678', 'x')).toBeNull();
 });
 
 it('gera mailto só com e-mail válido e codifica assunto e corpo', () => {

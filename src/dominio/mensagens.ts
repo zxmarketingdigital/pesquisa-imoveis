@@ -29,7 +29,13 @@ export function normalizarTelefone(t: string | null): string | null {
   const internacional = limpo.startsWith('+') || limpo.startsWith('00');
   let digitos = limpo.replace(/\D/g, '');
   if (limpo.startsWith('00')) digitos = digitos.slice(2);
-  if (!internacional && /^[29]\d{8}$/.test(digitos)) digitos = `351${digitos}`;
+  const nacional = /^[29]\d{8}$/.test(digitos);
+  if (internacional) {
+    if (nacional) return null; // "+912345678": nove dígitos nacionais com + e sem indicativo
+  } else {
+    if (!nacional) return null; // sem + nem 00: só número português de 9 dígitos
+    digitos = `351${digitos}`;
+  }
   return /^[1-9]\d{7,14}$/.test(digitos) ? digitos : null;
 }
 
@@ -38,7 +44,7 @@ export function ligacaoWhatsApp(telefone: string | null, texto: string): string 
   return numero ? `https://wa.me/${numero}?text=${encodeURIComponent(texto)}` : null;
 }
 
-const EMAIL_VALIDO = /^[^\s@<>,;:"?&]+@[^\s@<>,;:"?&]+\.[^\s@<>,;:"?&]+$/;
+const EMAIL_VALIDO = /^[^\s@<>,;:"?&%#]+@[^\s@<>,;:"?&%#]+\.[^\s@<>,;:"?&%#]+$/;
 
 export function ligacaoEmail(email: string | null, assunto: string, corpo: string): string | null {
   if (!email || !EMAIL_VALIDO.test(email.trim())) return null;

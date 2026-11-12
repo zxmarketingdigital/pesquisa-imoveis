@@ -26,6 +26,22 @@ describe('gerarCSV', () => {
   });
 });
 
+describe('gerarCSV: neutralização', () => {
+  const corpo = (campos: Partial<LinhaExportacao>) => gerarCSV([{ ...linha, ...campos }]).split('\r\n')[1]!;
+  it.each(['-1+2', '@SOMA(1)', '\tcmd', '\rcmd', '=1+1', '+1+1'])('prefixa %j em campo de texto', (valor) => {
+    expect(corpo({ consultor: valor })).toContain(`"'${valor.replace(/"/g, '""')}"`);
+  });
+  it('quebra de linha dentro do campo fica entre aspas', () => {
+    expect(corpo({ consultor: 'a\nb' })).toContain('"a\nb"');
+  });
+  it('telefone com - e () é normalizado e nunca vira fórmula', () => {
+    expect(corpo({ telefone: '+351 (21) 123-4567' })).toContain('"+351 21 123 4567"');
+    expect(corpo({ telefone: '+1-2' })).toContain('"+1 2"');
+    expect(corpo({ telefone: '-1+2' })).toContain(`"'-1+2"`);
+    expect(corpo({ telefone: '+1+2' })).toContain(`"'+1+2"`);
+  });
+});
+
 describe('gerarXLSX', () => {
   const JPEG = Uint8Array.from(atob('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAA//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AN//Z'), (c) => c.charCodeAt(0)).buffer;
 

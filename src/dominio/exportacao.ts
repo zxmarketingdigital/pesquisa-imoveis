@@ -13,10 +13,17 @@ const valores = (l: LinhaExportacao): Array<string | number> => [
 
 const INDICE_TELEFONE = CABECALHOS.indexOf('Telefone');
 
+// Telefone no formato internacional (+, dígitos, espaços, - e ()) é reescrito só com dígitos e espaços,
+// o que nunca é interpretável como fórmula; qualquer outro valor segue a regra geral de neutralização.
+function normalizarTelefoneCSV(s: string): string | null {
+  return /^\+\d[\d ()-]*$/.test(s) ? s.replace(/[()-]/g, ' ').replace(/ +/g, ' ').trim() : null;
+}
+
 function celulaCSV(valor: string | number, indice: number): string {
   let s = String(valor);
-  const telefoneValido = indice === INDICE_TELEFONE && /^\+\d[\d ]*$/.test(s);
-  if (!telefoneValido && typeof valor === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  const tel = indice === INDICE_TELEFONE && typeof valor === 'string' ? normalizarTelefoneCSV(s) : null;
+  if (tel !== null) s = tel;
+  else if (typeof valor === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return `"${s.replace(/"/g, '""')}"`;
 }
 
