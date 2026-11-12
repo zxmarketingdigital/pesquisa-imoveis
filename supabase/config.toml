@@ -207,8 +207,9 @@ web3 = 30
 # secret = ""
 
 [auth.email]
-# Allow/disallow new user signups via email to your project.
-enable_signup = false
+# NÃO desligar aqui: no GoTrue este flag liga/desliga o próprio login por e-mail (EXTERNAL_EMAIL_ENABLED).
+# O registo público fica fechado por [auth] enable_signup = false (DISABLE_SIGNUP).
+enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true

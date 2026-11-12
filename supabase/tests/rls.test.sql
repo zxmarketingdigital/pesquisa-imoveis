@@ -2,8 +2,8 @@ begin;
 select plan(6);
 
 insert into auth.users (id, email) values
-  ('00000000-0000-0000-0000-00000000000a', 'a@teste.local'),
-  ('00000000-0000-0000-0000-00000000000b', 'b@teste.local');
+  ('00000000-0000-0000-0000-00000000000a', 'rls-a@teste.local'),
+  ('00000000-0000-0000-0000-00000000000b', 'rls-b@teste.local');
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}';
