@@ -88,9 +88,14 @@ test('convite → definir senha → recuperação', async ({ page }) => {
 test('e-mail inexistente recebe a mesma mensagem neutra', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Esqueci a palavra-passe' }).click();
-  await page.getByLabel('E-mail').fill(`ninguem-${Date.now()}@teste.local`);
+  const email = `ninguem-${Date.now()}@teste.local`;
+  await page.getByLabel('E-mail').fill(email);
+  const resposta = page.waitForResponse(r => r.url().includes('/auth/v1/recover'));
   await page.getByRole('button', { name: 'Enviar link' }).click();
+  expect((await resposta).status()).toBe(200); // pedido aceite, não a cota esgotada a passar por sucesso
   await expect(page.getByRole('status')).toContainText('Se o e-mail estiver registado');
+  await page.waitForTimeout(1000);
+  expect(await contar(email)).toBe(0); // nenhum e-mail sai para conta inexistente
 });
 
 test('link expirado mostra aviso e abre a recuperação', async ({ page }) => {
