@@ -29,7 +29,11 @@ begin
   if position('?' in s) > 0 then v_query := substr(s, position('?' in s) + 1); end if;
   v_host := split_part(v_resto, '/', 1);
   v_path := substr(v_resto, length(v_host) + 1);
-  v_host := lower(regexp_replace(v_host, ':\d*$', ''));
+  v_host := regexp_replace(lower(regexp_replace(v_host, ':\d*$', '')), '\.+$', '');  -- sem porta nem ponto final
+  -- host válido: pelo menos um ponto e labels [a-z0-9-] ("https:///x" e "https://?id=5" não têm host)
+  if v_host !~ '^[a-z0-9-]+(\.[a-z0-9-]+)+$' then
+    raise exception 'URL sem host válido' using errcode = '22023';
+  end if;
   v_host := regexp_replace(v_host, '^(www|m)\.', '');
   v_path := regexp_replace(v_path, '/+$', '');
   select coalesce(string_agg(p, '&' order by p collate "C"), '') into v_params

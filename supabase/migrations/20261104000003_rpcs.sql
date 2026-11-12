@@ -20,6 +20,7 @@ declare
   v_imovel uuid;
   v_novo boolean;
   v_estado text;
+  v_ex record;
 begin
   if auth.uid() is null then
     raise exception 'sessão em falta' using errcode = '42501';
@@ -58,9 +59,20 @@ begin
   if v_imovel is not null then
     -- Decisão: o banco é partilhado, por isso um registo nunca sobrescreve dados de outro.
     -- Telefone, e-mail, nome do anunciante e foto só se preenchem quando estão vazios.
-    -- O preço é por anúncio (imoveis.preco = mínimo). Área, ano, nova e garagem só são
-    -- atualizados com valores não nulos. O url só muda se o anúncio guardado tiver a mesma chave
+    -- O preço é por anúncio (imoveis.preco = mínimo). Área, ano, nova e garagem: o último registo
+    -- vence (o anúncio reflete o portal), mas só com valores não nulos; o mesmo vale no ramo ligado. O url só muda se o anúncio guardado tiver a mesma chave
     -- (o mesmo host), para um registo nunca trocar o link para outro domínio.
+    -- Identidade do imóvel partilhado (tipologia, concelho, zona) não muda por re-registo: se divergir,
+    -- recusa com mensagem legível em vez de descartar em silêncio. Referência (quando vazia) preenche-se
+    -- como o telefone, desde que não colida com outro imóvel; a imobiliária é obrigatória e nunca muda.
+    select i.tipologia, i.concelho, i.zona, i.concelho_norm, i.zona_norm into v_ex
+    from public.imoveis i where i.id = v_imovel;
+    if v_ex.tipologia <> p_tipologia
+       or v_ex.concelho_norm <> public.normalizar_nome(p_concelho)
+       or v_ex.zona_norm <> public.normalizar_nome(p_zona) then
+      raise exception 'Este anúncio já está registado como % em % / %.', v_ex.tipologia, v_ex.concelho, v_ex.zona
+        using errcode = '22023';
+    end if;
     update public.anuncios a set preco = p_preco,
       url = case when public.normalizar_url(a.url) = v_chave then v_url else a.url end,
       ultima_vez = now()
@@ -70,6 +82,10 @@ begin
       ano_construcao = coalesce(p_ano, i.ano_construcao),
       construcao_nova = coalesce(p_nova, i.construcao_nova),
       garagem = coalesce(p_garagem, i.garagem),
+      referencia = coalesce(i.referencia, case when v_ref is not null and not exists (
+        select 1 from public.imoveis o where o.id <> i.id and o.referencia_norm = public.normalizar_referencia(v_ref)
+          and o.imobiliaria_norm = i.imobiliaria_norm and o.tipologia = i.tipologia
+          and o.concelho_norm = i.concelho_norm and o.zona_norm = i.zona_norm) then v_ref end),
       consultor_nome = coalesce(i.consultor_nome, v_consultor),
       telefone = coalesce(i.telefone, v_telefone),
       email = coalesce(i.email, v_email),
@@ -84,10 +100,10 @@ begin
       p_ano, p_nova, p_garagem, v_consultor, v_telefone, v_email, v_foto, 'manual')
     on conflict (referencia_norm, imobiliaria_norm, tipologia, concelho_norm, zona_norm) where referencia_norm <> ''
     do update set
-      area_m2 = coalesce(i.area_m2, excluded.area_m2),
-      ano_construcao = coalesce(i.ano_construcao, excluded.ano_construcao),
-      construcao_nova = coalesce(i.construcao_nova, excluded.construcao_nova),
-      garagem = coalesce(i.garagem, excluded.garagem),
+      area_m2 = coalesce(excluded.area_m2, i.area_m2),
+      ano_construcao = coalesce(excluded.ano_construcao, i.ano_construcao),
+      construcao_nova = coalesce(excluded.construcao_nova, i.construcao_nova),
+      garagem = coalesce(excluded.garagem, i.garagem),
       consultor_nome = coalesce(i.consultor_nome, excluded.consultor_nome),
       telefone = coalesce(i.telefone, excluded.telefone),
       email = coalesce(i.email, excluded.email),
@@ -127,10 +143,15 @@ begin
 end $$;
 
 create function public.atualizar_pesquisa(p_pesquisa uuid) returns void
-language sql security invoker set search_path = public as $$
+language plpgsql security invoker set search_path = public as $$
+declare v_id uuid;
+begin
   update pesquisas set novos_desde = now(), ultima_atualizacao = now()
-  where id = p_pesquisa;
-$$;
+  where id = p_pesquisa returning id into v_id;
+  if v_id is null then  -- inexistente ou de outro consultor (a RLS esconde-a): nunca "sucesso" com 0 linhas
+    raise exception 'pesquisa não encontrada' using errcode = 'P0002';
+  end if;
+end $$;
 
 revoke execute on function public.registar_anuncio from anon, public;
 revoke execute on function public.criar_comprador from anon, public;

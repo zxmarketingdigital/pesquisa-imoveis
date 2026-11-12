@@ -26,6 +26,12 @@ describe('interpretarUrlAnuncio', () => {
   ])('recusa URL com autoridade manipulada: %s', (url) => {
     expect(interpretarUrlAnuncio(url)).toBeNull();
   });
+  it.each(['https:///imovel/123', 'https://?id=5', 'https://localhost/x', 'https://exemplo_.pt/x'])('recusa URL sem host válido: %s', (url) => {
+    expect(interpretarUrlAnuncio(url)).toBeNull();
+  });
+  it('ignora o ponto final do host', () => {
+    expect(interpretarUrlAnuncio('https://www.imovirtual.com./x')).toMatchObject({ portal: 'Imovirtual', chave: 'imovirtual.com/x' });
+  });
   it('aceita @ fora da autoridade', () => {
     expect(interpretarUrlAnuncio('https://imovirtual.com/anuncio/1?contacto=a@b.pt')).toMatchObject({ portal: 'Imovirtual' });
   });

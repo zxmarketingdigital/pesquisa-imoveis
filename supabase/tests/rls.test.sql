@@ -1,5 +1,5 @@
 begin;
-select plan(37);
+select plan(40);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'rls-a@teste.local'),
@@ -22,6 +22,9 @@ select throws_ok($$ delete from public.pesquisas $$, '42501', null, 'A não apag
 
 select lives_ok($$ insert into public.contactos (comprador_id, imovel_id, canal, texto) select c.id, i.id, 'email', 't' from public.compradores c, public.imoveis i $$, 'A regista contacto');
 
+select lives_ok($$ select set_config('t.pid', (select id::text from public.pesquisas), true) $$, 'A guarda o id da sua pesquisa');
+select lives_ok($$ select public.atualizar_pesquisa(current_setting('t.pid')::uuid) $$, 'A atualiza a sua pesquisa');
+
 -- B
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated"}';
 select is((select count(*) from public.compradores), 0::bigint, 'B não vê compradores de A');
@@ -35,6 +38,8 @@ select throws_ok($$ insert into public.contactos (comprador_id, imovel_id, canal
 with u as (update public.compradores set nome = 'x' returning 1) select is((select count(*) from u), 0::bigint, 'B não edita compradores de A');
 with d as (delete from public.compradores returning 1) select is((select count(*) from d), 0::bigint, 'B não apaga compradores de A');
 with d as (delete from public.contactos returning 1) select is((select count(*) from d), 0::bigint, 'B não apaga contactos de A');
+
+select throws_ok($$ select public.atualizar_pesquisa(current_setting('t.pid')::uuid) $$, 'P0002', 'pesquisa não encontrada', 'B não atualiza a pesquisa de A');
 
 -- storage
 select throws_ok($$ insert into storage.objects (bucket_id, name) values ('fotos', 'nao-uuid.png') $$, '42501', null, 'upload com nome fora do padrão é recusado');
